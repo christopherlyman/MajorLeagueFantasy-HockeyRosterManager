@@ -227,3 +227,37 @@ Prove the NFHL Hockey decision engine first.
 - Document major architecture decisions before implementing them
 - NAS/runtime/Docker work is performed through Bash/SSH on Apollo
 - Git operations are performed from Windows PowerShell
+
+## Player Identity Resolution
+
+Yahoo and NHL player identifiers are different provider namespaces.
+
+The Hockey Roster Manager resolves them through a provider-neutral identity
+layer before NHL statistics or projections are joined to Yahoo players.
+
+NHL-side identity source:
+- NHL player search registry is the primary NHL identity universe.
+- NHL season-stat rows are statistical facts keyed by NHL playerId; they are
+  not the canonical identity registry because players may have no NHL stat
+  row for a particular season.
+
+Resolution policy:
+- normalize exact player names deterministically, including Unicode marks;
+- a globally unique Yahoo name plus globally unique NHL name may resolve
+  directly;
+- duplicate-name groups are resolved one-to-one using canonical NHL team and
+  position evidence;
+- within a duplicate-name group, position-only or team-only resolution is
+  allowed only when exactly one Yahoo and one NHL candidate remain for that
+  evidence;
+- final one-to-one elimination is allowed only when exactly one Yahoo and one
+  NHL candidate remain;
+- the same NHL playerId may never be assigned to multiple Yahoo players;
+- fuzzy-name matching must never silently assign an identity;
+- unresolved identities remain explicitly unresolved and may be handled by a
+  separately reviewed alias/exception mechanism when justified.
+
+The provider_player_key remains the authoritative Yahoo identity and NHL
+playerId remains the authoritative NHL identity. Recommendation logic must
+not join player data across providers by display name.
+
