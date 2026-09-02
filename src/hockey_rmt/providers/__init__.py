@@ -1,0 +1,1 @@
+"""Fantasy-platform provider integrations."""
