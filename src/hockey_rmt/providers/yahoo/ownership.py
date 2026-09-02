@@ -196,3 +196,79 @@ def fetch_player_market_states(
         )
 
     return states
+
+
+
+def fetch_all_player_market_states(
+    client: YahooClient,
+    league_key: str,
+    player_keys: Sequence[str],
+    *,
+    batch_size: int = 25,
+) -> tuple[PlayerMarketState, ...]:
+    if batch_size <= 0:
+        raise ValueError(
+            "Ownership batch size must be positive."
+        )
+
+    requested = tuple(
+        player_key.strip()
+        for player_key in player_keys
+        if player_key.strip()
+    )
+
+    if not requested:
+        return ()
+
+    if len(requested) != len(set(requested)):
+        raise ValueError(
+            "Yahoo player keys must be unique."
+        )
+
+    states: list[PlayerMarketState] = []
+    seen: set[str] = set()
+
+    for start in range(
+        0,
+        len(requested),
+        batch_size,
+    ):
+        batch = requested[
+            start:start + batch_size
+        ]
+
+        batch_states = (
+            fetch_player_market_states(
+                client,
+                league_key,
+                batch,
+            )
+        )
+
+        for state in batch_states:
+            player_key = (
+                state.provider_player_key
+            )
+
+            if player_key in seen:
+                raise YahooOwnershipError(
+                    "Yahoo returned duplicate "
+                    "ownership state for player "
+                    f"{player_key!r}."
+                )
+
+            seen.add(player_key)
+
+        states.extend(batch_states)
+
+    expected = set(requested)
+
+    if seen != expected:
+        raise YahooOwnershipError(
+            "Complete Yahoo ownership result "
+            "did not match requested players. "
+            f"missing={sorted(expected - seen)!r} "
+            f"unexpected={sorted(seen - expected)!r}"
+        )
+
+    return tuple(states)
