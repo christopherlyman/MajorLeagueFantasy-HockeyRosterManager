@@ -16,3 +16,19 @@ class PlayerGameContext:
     opponent_team_abbr: str | None = None
     home_away: str | None = None
     start_time_utc: datetime | None = None
+
+
+@dataclass(frozen=True)
+class PlayerScheduleWindow:
+    provider_player_key: str
+    start_date: date
+    end_date: date
+
+    nhl_team_abbr: str | None
+    team_resolution_state: str
+
+    scheduled_games: tuple[PlayerGameContext, ...]
+
+    @property
+    def game_count(self) -> int:
+        return len(self.scheduled_games)
