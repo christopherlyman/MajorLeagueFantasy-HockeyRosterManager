@@ -1,0 +1,39 @@
+# Secrets / local environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs / temporary output
+*.log
+tmp/
+temp/
+
+# Generated application data
+data/raw/
+data/derived/
+
+# League-instance runtime state
+instances/*/.env
+instances/*/data/
+instances/*/logs/
+instances/*/status/
+instances/*/runtime/
+
+# Local databases
+*.sqlite
+*.sqlite3
+*.db
