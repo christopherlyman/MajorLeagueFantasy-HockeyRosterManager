@@ -426,3 +426,41 @@ Undrafted players use an effective draft pick of 250 for this model.
 Players with older NHL regular-season history are not classified as rookies
 and are handled separately. Goalies are excluded from this rookie-skater model
 and are handled by the goalie projection system.
+
+## Long-Absence NHL Skater Projection
+
+Skaters who have prior NHL regular-season experience but no NHL history within
+the established player's three-season projection window are treated separately
+from both established NHL skaters and true rookies.
+
+A historical backtest examined NHL skaters who returned after missing at least
+three consecutive NHL seasons.
+
+For returners who subsequently played at least 20 NHL games:
+- sample size was 10 players;
+- a generic skater population baseline produced approximately 0.6411 MAE;
+- raw stale NHL FPPG produced approximately 0.9715 MAE;
+- stale NHL FPPG regressed with 10 effective games produced approximately
+  0.8144 MAE.
+
+For returners with at least 10 games, the same ordering held:
+- population baseline MAE approximately 0.6820;
+- raw stale NHL FPPG approximately 0.9150;
+- shrunk stale NHL FPPG approximately 0.8335.
+
+Although stale NHL performance retained some rank signal in the small
+meaningful-returner cohort, it was not reliable enough as a numerical preseason
+forecast.
+
+The Version 1 long-absence skater policy therefore:
+- does not use stale player-specific NHL FPPG as a projection adjustment;
+- uses the most recently completed NHL season's skater population mean under
+  current NFHL scoring as a conservative preseason prior;
+- preserves the player's prior NHL season history for explanation and audit;
+- marks the projection as a low-confidence fallback;
+- allows current NHL roster status, role, ice time, power-play usage, and
+  current-season production to supersede the fallback rapidly once new evidence
+  becomes available.
+
+Goalies are excluded from this policy and are handled by the goalie projection
+system.
