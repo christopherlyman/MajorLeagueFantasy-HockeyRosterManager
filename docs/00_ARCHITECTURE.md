@@ -348,3 +348,39 @@ In particular:
   recommendations are considered complete;
 - observed backtest bias remains an evaluation metric and is not yet applied
   as an automatic correction.
+
+## Established NHL Skater Projection
+
+For skaters with NHL history, the production preseason projection begins with
+the backtested historical-rate baseline and then applies a separately
+backtested calibration layer.
+
+The historical baseline uses:
+- three prior NHL seasons;
+- decay weights of 0.25, 0.50, and 1.00 from oldest to newest;
+- 10 effective games of regression toward the skater population mean.
+
+A linear age adjustment was retained only after out-of-sample testing showed
+incremental improvement beyond a generic prior-season bias correction.
+
+Across the two backtest seasons:
+- 20+ GP skaters improved approximately 2.47% MAE versus bias correction alone;
+- 40+ GP skaters improved approximately 3.42% MAE versus bias correction alone.
+
+A quadratic age term was rejected because it produced no meaningful
+out-of-sample improvement over the simpler linear model.
+
+The production calibration is fitted from the most recently completed season,
+using only players with at least 20 games in that target season. The model
+preserves separate explainable values for:
+- historical baseline FPPG;
+- general calibration adjustment;
+- age adjustment;
+- final calibrated projected FPPG.
+
+Age is measured against an October 1 season reference date so the age feature
+is stable and comparable across historical backtests and production seasons.
+
+This remains a season-level player-strength projection. Current-season form,
+usage, role, matchup, and daily game context are separate downstream inputs to
+daily expected fantasy value.
