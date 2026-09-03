@@ -384,3 +384,45 @@ is stable and comparable across historical backtests and production seasons.
 This remains a season-level player-strength projection. Current-season form,
 usage, role, matchup, and daily game context are separate downstream inputs to
 daily expected fantasy value.
+
+## Rookie Skater Projection
+
+Skaters with no prior NHL regular-season history use a separate preseason
+rookie projection rather than the established-player historical-rate model.
+
+The rookie model was developed from first-year NHL skaters in the 2023-24,
+2024-25, and 2025-26 seasons. Only rookies who played at least 20 NHL games in
+their first season were used as the modeling target, producing 102 historical
+training observations.
+
+Candidate preseason inputs included:
+- age;
+- NHL draft capital;
+- primary pre-NHL league production;
+- position.
+
+Out-of-sample testing showed that age plus draft capital consistently improved
+on a rookie-population mean. Pre-NHL production and position did not provide
+stable incremental improvement across forward test seasons and are therefore
+not used in the Version 1 projection.
+
+Draft capital is represented as the inverse square root of overall draft pick.
+This treatment materially improved forecasting for the fantasy-relevant upper
+tail compared with a logarithmic draft-pick model while also improving overall
+rookie MAE.
+
+Across the two forward tests, the inverse-square-root model produced:
+- overall rookie average MAE of approximately 0.5837 NFHL FPPG;
+- top-10 draft-pick average MAE of approximately 0.9027;
+- 3.0+ actual FPPG rookie average MAE of approximately 0.8442.
+
+The model remains intentionally conservative. Current NHL roster status,
+ice time, power-play role, current-season performance, and daily matchup are
+separate downstream signals and may rapidly supersede the preseason rookie
+prior once NHL games begin.
+
+Undrafted players use an effective draft pick of 250 for this model.
+
+Players with older NHL regular-season history are not classified as rookies
+and are handled separately. Goalies are excluded from this rookie-skater model
+and are handled by the goalie projection system.
