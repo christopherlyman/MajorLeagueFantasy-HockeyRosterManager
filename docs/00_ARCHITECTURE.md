@@ -293,3 +293,25 @@ scoring definition. Yahoo rankings are not player-quality inputs.
 Historical fantasy points are descriptive actual performance, not a projection.
 Projection models will be layered separately on top of canonical historical
 statistics and other validated predictive inputs.
+
+## Yahoo Player Historical Value Baseline
+
+The Roster Manager operates on the Yahoo fantasy player universe, so historical
+NHL value must be joined back to Yahoo players through the canonical player
+identity layer.
+
+Each Yahoo player receives exactly one historical coverage state:
+
+- `historical_value_available`: NHL identity resolved and historical NFHL value
+  exists for the requested season;
+- `resolved_no_history`: NHL identity resolved but no historical NHL value row
+  exists for the requested season;
+- `identity_unresolved`: cross-provider NHL identity remains unresolved.
+
+Missing historical value is represented explicitly as absent data. It must not
+be converted to zero fantasy points or zero fantasy points per game.
+
+Historical FPPG remains descriptive prior performance. It is not itself a
+projection, and small-sample historical rates must not be allowed to dominate
+future player-value recommendations without projection-specific reliability
+handling.
