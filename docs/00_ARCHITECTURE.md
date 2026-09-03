@@ -315,3 +315,36 @@ Historical FPPG remains descriptive prior performance. It is not itself a
 projection, and small-sample historical rates must not be allowed to dominate
 future player-value recommendations without projection-specific reliability
 handling.
+
+## Backtested Historical Projection Baseline
+
+The first predictive baseline is derived only from prior official NHL
+performance scored under the current NFHL scoring definition.
+
+Backtesting against the 2024-25 and 2025-26 seasons selected:
+
+- prior-season decay weights, oldest to newest: 0.25, 0.50, 1.00;
+- skaters: regress the decay-weighted rate toward the skater population mean
+  using 10 effective games of prior strength;
+- goalies: regress the decay-weighted rate toward the goalie population mean
+  using 40 effective games of prior strength.
+
+These parameters were chosen from out-of-season historical backtests rather
+than arbitrary tuning.
+
+The model is a historical projection baseline, not the finished player
+projection system.
+
+In particular:
+- historical FPPG must not simply be copied forward;
+- small samples are explicitly regressed;
+- players with older NHL history but no most-recent-season line may still
+  receive a historical projection;
+- players with no NHL history receive no historical projection rather than
+  zero value;
+- goalie historical-rate predictability is materially weaker than skater
+  predictability, so goalie role, expected starts, team context, and current
+  depth-chart information must be modeled separately before goalie
+  recommendations are considered complete;
+- observed backtest bias remains an evaluation metric and is not yet applied
+  as an automatic correction.
