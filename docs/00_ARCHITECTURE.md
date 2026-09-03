@@ -270,3 +270,26 @@ Reviewed provider-specific identity exceptions:
 - fuzzy matching must not create or modify exceptions automatically;
 - exceptions are provider/season identity data, not recommendation logic.
 
+## Historical NHL Statistical Baseline
+
+Official NHL season statistics are the baseline source for historical player
+performance under NFHL scoring.
+
+NHL Stats REST retrieval policy:
+- request season aggregate reports with `limit=-1`;
+- sort deterministically by `playerId` ascending;
+- validate returned row count against the API-reported total;
+- require one unique row per NHL playerId;
+- require every scoring field used by NFHL to be present;
+- treat the requested seasonId in the API filter as authoritative; aggregate result rows may omit seasonId;
+- if a result row does include seasonId, require it to match the requested season;
+- require skater summary and realtime reports to contain the same playerId set;
+- do not silently deduplicate unsafe offset-paginated responses;
+- do not silently treat missing reports or missing statistical fields as zero.
+
+The baseline converts official NHL statistics through the live Yahoo NFHL
+scoring definition. Yahoo rankings are not player-quality inputs.
+
+Historical fantasy points are descriptive actual performance, not a projection.
+Projection models will be layered separately on top of canonical historical
+statistics and other validated predictive inputs.
