@@ -261,3 +261,12 @@ The provider_player_key remains the authoritative Yahoo identity and NHL
 playerId remains the authoritative NHL identity. Recommendation logic must
 not join player data across providers by display name.
 
+Reviewed provider-specific identity exceptions:
+- exact provider-player-key to NHL-playerId mappings may be used when the
+  normal deterministic resolver cannot reconcile legitimate provider display
+  differences such as nicknames, formal names, or position-label differences;
+- every exception must be manually verified against NHL identity evidence;
+- exceptions must be explicit and auditable;
+- fuzzy matching must not create or modify exceptions automatically;
+- exceptions are provider/season identity data, not recommendation logic.
+

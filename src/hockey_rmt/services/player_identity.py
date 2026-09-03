@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from hockey_rmt.domain.hockey_team import (
     TeamIdentityCrosswalk,
@@ -66,6 +66,10 @@ def resolve_player_identities(
     team_crosswalk: Sequence[
         TeamIdentityCrosswalk
     ],
+    explicit_nhl_player_ids: Mapping[
+        str,
+        int,
+    ] | None = None,
 ) -> tuple[
     PlayerIdentityResolution,
     ...,
@@ -133,6 +137,15 @@ def resolve_player_identities(
     ] = {}
 
     assigned_nhl_ids = set()
+
+    nhl_by_id = {
+        player.nhl_player_id: player
+        for player in nhl_players
+    }
+
+    explicit_nhl_player_ids = dict(
+        explicit_nhl_player_ids or {}
+    )
 
     def yahoo_team(
         player: Player,
@@ -207,14 +220,61 @@ def resolve_player_identities(
             ),
         )
 
+    player_by_key = {
+        player.provider_player_key: player
+        for player in players
+    }
+
+    for (
+        provider_player_key,
+        nhl_player_id,
+    ) in sorted(
+        explicit_nhl_player_ids.items()
+    ):
+        player = player_by_key.get(
+            provider_player_key
+        )
+
+        if player is None:
+            raise PlayerIdentityError(
+                "Explicit identity override referenced "
+                "unknown Yahoo player key "
+                f"{provider_player_key!r}."
+            )
+
+        nhl_player = nhl_by_id.get(
+            int(nhl_player_id)
+        )
+
+        if nhl_player is None:
+            raise PlayerIdentityError(
+                "Explicit identity override referenced "
+                "unknown NHL playerId "
+                f"{nhl_player_id!r}."
+            )
+
+        assign(
+            player,
+            nhl_player,
+            "explicit_override",
+        )
+
     for name_key in sorted(
         yahoo_by_name
     ):
-        yahoo_group = list(
-            yahoo_by_name[
+        yahoo_group = [
+            player
+            for player in yahoo_by_name[
                 name_key
             ]
-        )
+            if (
+                player.provider_player_key
+                not in resolved
+            )
+        ]
+
+        if not yahoo_group:
+            continue
 
         nhl_group = list(
             nhl_by_name.get(
