@@ -5,6 +5,7 @@ from typing import Any
 
 import requests
 
+from hockey_rmt.domain.goalie_workload import GoalieSeasonWorkload
 from hockey_rmt.domain.player_stats import (
     GoalieSeasonStats,
     SkaterSeasonStats,
@@ -521,3 +522,79 @@ def fetch_goalie_season_stats(
         )
         for row in rows
     )
+
+
+GOALIE_WORKLOAD_FIELDS = (
+    "playerId",
+    "goalieFullName",
+    "gamesStarted",
+)
+
+
+def fetch_goalie_season_workload(
+    *,
+    season_id: int,
+    game_type_id: int = 2,
+    timeout_seconds: int = 30,
+    session: requests.Session | None = None,
+) -> tuple[GoalieSeasonWorkload, ...]:
+    rows = _fetch_report(
+        "goalie/summary",
+        season_id=season_id,
+        game_type_id=game_type_id,
+        timeout_seconds=timeout_seconds,
+        session=session,
+    )
+
+    _require_fields(
+        rows,
+        GOALIE_WORKLOAD_FIELDS,
+    )
+
+    _validate_optional_season_id(
+        rows,
+        season_id,
+    )
+
+    result = tuple(
+        GoalieSeasonWorkload(
+            nhl_player_id=_required_int(
+                row,
+                "playerId",
+            ),
+            full_name=_required_name(
+                row,
+                "goalieFullName",
+            ),
+            season_id=int(
+                season_id
+            ),
+            games_started=_required_int(
+                row,
+                "gamesStarted",
+            ),
+        )
+        for row in rows
+    )
+
+    ids = [
+        row.nhl_player_id
+        for row in result
+    ]
+
+    if len(ids) != len(set(ids)):
+        raise NhlStatsError(
+            "Goalie workload season contained "
+            "duplicate NHL playerId values."
+        )
+
+    if any(
+        row.games_started < 0
+        for row in result
+    ):
+        raise NhlStatsError(
+            "Goalie workload season contained "
+            "negative gamesStarted."
+        )
+
+    return result

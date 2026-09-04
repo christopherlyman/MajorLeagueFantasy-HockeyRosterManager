@@ -464,3 +464,123 @@ The Version 1 long-absence skater policy therefore:
 
 Goalies are excluded from this policy and are handled by the goalie projection
 system.
+
+## Goalie Preseason Workload Projection
+
+Goalie quality and goalie workload are modeled separately.
+
+Historical NHL goalie fantasy-point rate remains a conservative preseason
+quality prior. Backtesting did not support adding prior save percentage,
+quality-start percentage, or shots-against rate as independent preseason
+calibration factors.
+
+Future goalie workload cannot be inferred reliably from historical starts
+alone. Prior-season starts are useful as a fallback signal, but current team
+hierarchy and coaching deployment require a forward-looking workload input.
+
+The workload architecture is season-agnostic:
+
+1. The fantasy league supplies the season start year.
+2. The canonical NHL season identifier is derived from that year.
+3. The NHL provider retrieves current canonical teams.
+4. The NHL provider retrieves each club's complete schedule for that season.
+5. Regular-season games are counted dynamically for each team.
+6. The application discovers the newest available goalie-workload snapshot for
+   the requested season.
+7. A provider adapter converts that snapshot into canonical
+   GoalieWorkloadProjection rows.
+8. The source projection is validated against the actual NHL team universe and
+   official regular-season game counts for that season.
+
+No production behavior may depend on a hard-coded season identifier, snapshot
+date, filename, 32-team assumption, or fixed regular-season game count.
+
+Season-specific projection files are data, not application logic. The reference
+layout is:
+
+    data/reference/goalie_projections/<provider>/<season_id>/<snapshot-date>.csv
+
+The newest valid snapshot for the requested season is selected automatically.
+
+Daily Faceoff is the initial optional external workload provider. Its
+provider-specific team vocabulary is isolated inside its adapter. Daily
+Faceoff fantasy points, rankings, ADP, and scoring calculations are not part of
+the NFHL player-value model.
+
+A complete workload source allocates the team's entire official regular-season
+schedule among its projected goalies. A current NHL roster goalie omitted from
+such a complete source therefore has a source-implied zero workload rather
+than missing workload data.
+
+If no valid external workload snapshot exists for a season, the application may
+use the internally backtested historical workload model as an explicitly
+lower-confidence fallback. External and fallback workloads must never be added
+together.
+
+Once a season begins, actual starts, current role, injuries, transactions, and
+daily starter information progressively supersede the preseason workload prior.
+
+## Canonical Preseason Goalie Projection
+
+Preseason goalie quality and workload remain separate inputs and are combined
+only at the player-value layer.
+
+Goalie quality:
+- established goalies use the existing three-season historical NFHL
+  fantasy-point-rate projection with 40 effective games of shrinkage;
+- resolved goalies without usable recent NHL history use the same goalie
+  population mean that established projections regress toward;
+- the population prior is explicitly identified rather than represented as
+  zero or missing quality.
+
+Goalie workload:
+- a valid complete external seasonal workload source is authoritative for its
+  team allocation;
+- a goalie explicitly present in that source receives the projected starts
+  supplied by the source;
+- a current NHL roster goalie omitted from a complete source receives a
+  source-implied zero workload;
+- a resolved Yahoo goalie not on a current NHL roster receives zero current NHL
+  preseason workload and retains a distinct workload state;
+- if no valid external snapshot exists, the internally backtested historical
+  workload model may supply the lower-confidence workload instead;
+- external and fallback workload projections are mutually exclusive.
+
+The combined preseason start-based value is:
+
+    projected goalie fantasy points per appearance
+    × projected games started
+
+This combined value is a preseason ranking aid, not a daily-start projection.
+Quality rate, workload, workload provenance, and combined value remain separate
+canonical fields so that confirmed starts, current role, opponent context, and
+current-season performance can supersede preseason workload independently.
+
+### Internal Goalie Workload Fallback
+
+The external preseason workload snapshot is preferred because current goalie
+hierarchy is not reliably represented by historical starts alone.
+
+When no valid external workload snapshot exists for the requested season,
+Version 1 uses each current NHL roster goalie's games started from the most
+recent completed NHL regular season as the internal lower-confidence workload
+fallback.
+
+This choice follows the workload backtest:
+- prior-season starts were more predictive than the tested three-season
+  decay-weighted starts model;
+- a fitted regression produced only modest average improvement and was not
+  sufficiently stable across validation seasons to justify production
+  coefficients;
+- therefore no season-specific regression coefficients are embedded in the
+  application.
+
+A current NHL roster goalie with no starts in the immediately preceding NHL
+season receives a zero-start historical fallback. This represents absence of
+historical workload evidence, not a claim that the goalie cannot earn starts
+in the new season.
+
+The fallback does not claim to reproduce the current team's exact schedule
+allocation. It is deliberately lower confidence and is superseded by a valid
+forward-looking workload snapshot or, once play begins, by current role and
+daily starter information.
