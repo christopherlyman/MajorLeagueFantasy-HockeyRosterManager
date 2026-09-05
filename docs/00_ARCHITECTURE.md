@@ -584,3 +584,35 @@ The fallback does not claim to reproduce the current team's exact schedule
 allocation. It is deliberately lower confidence and is superseded by a valid
 forward-looking workload snapshot or, once play begins, by current role and
 daily starter information.
+
+
+## Canonical Player Strength Projection
+
+The established-skater, rookie-skater, long-absence-skater, and goalie
+preseason models remain separate projection models. A canonical join exposes
+their season-level projected NFHL fantasy-point rate through one Yahoo-player
+interface for downstream roster-management logic.
+
+The join does not recalculate projections. It preserves the source model and
+its projected fantasy points per game.
+
+Skater projection families are mutually exclusive. If the same NHL playerId
+appears in more than one established, rookie, or long-absence projection
+family, construction fails explicitly rather than selecting a model by
+precedence.
+
+Yahoo-to-NHL identity resolution is the authoritative join for skaters.
+Unresolved identities remain explicitly unresolved. A resolved Yahoo skater
+with no current preseason projection receives an explicit no-projection state;
+missing projection value is never converted to zero.
+
+Goalie preseason projections already carry the Yahoo player key and canonical
+NHL playerId. Their projected fantasy points per game represents goalie
+quality strength. Projected season starts and start-based season value remain
+separate workload fields and are not substituted for daily expected fantasy
+value.
+
+Daily schedule, current-season form, ice time, special-teams role, injury
+status, matchup context, and confirmed goalie-start information remain
+downstream inputs. The canonical player-strength projection is a season-level
+strength input only.
