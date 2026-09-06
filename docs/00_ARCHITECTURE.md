@@ -719,3 +719,53 @@ explicitly insufficient rather than forcing a directional label.
 These thresholds are provisional interpretable heuristics. They do not alter
 projected fantasy points or recommendations until retrospective evaluation
 shows that the signals improve prediction of future NFHL production.
+
+## Daily Faceoff Current Deployment
+
+Daily Faceoff team line-combination pages expose structured deployment data in
+the page's `__NEXT_DATA__` payload under `props.pageProps.combinations`.
+
+The `combinations.lines` collection describes deployment groups and ratings;
+player membership is carried by repeated rows in `combinations.players`.
+A player may therefore appear multiple times across even-strength,
+power-play, penalty-kill, or goalie deployment groups.
+
+The Daily Faceoff provider collapses those repeated source rows to one
+source-player deployment record while preserving every category/group
+assignment.
+
+Daily Faceoff `playerId` is source-specific and is not an NHL playerId.
+The raw deployment provider therefore preserves it only as
+`source_player_id`. NHL identity is resolved downstream through a
+deterministic bridge. Fuzzy name matching is prohibited.
+
+The provider also preserves:
+
+- team abbreviation and source page;
+- `sourceName`;
+- `updatedAt`;
+- injury status;
+- game-time-decision state;
+- all deployment category/group assignments.
+
+`sourceName` and `updatedAt` are required freshness metadata. For example, an
+offseason page may explicitly describe its combinations as projected.
+Projected or stale deployment must not silently be treated as confirmed
+same-day deployment.
+
+Missing or inconsistent source data remains explicit and must not be converted
+to a healthy/active/current-player assumption.
+
+Repeated Daily Faceoff player rows may differ in status fields because one
+player can simultaneously have active deployment assignments and an off-ice
+injured-reserve assignment. Player-level status is therefore collapsed
+deterministically:
+
+- repeated rows for the same Daily Faceoff playerId must have the same exact
+  player name;
+- null or blank injury statuses do not override a non-null injury status;
+- one unique non-null injury status is preserved;
+- conflicting non-null injury statuses are rejected;
+- game-time-decision is true if any repeated source row marks the player as a
+  game-time decision;
+- all unique deployment assignments remain preserved.
