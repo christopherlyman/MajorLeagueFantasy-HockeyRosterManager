@@ -616,3 +616,40 @@ Daily schedule, current-season form, ice time, special-teams role, injury
 status, matchup context, and confirmed goalie-start information remain
 downstream inputs. The canonical player-strength projection is a season-level
 strength input only.
+
+
+## Phase 4 Daily Data Source Policy
+
+Phase 4 separates stable fantasy-provider state, official NHL facts,
+underlying-performance analytics, tracking enrichment, and volatile deployment
+information rather than treating any one external source as authoritative for
+all daily decisions.
+
+The initial source policy is:
+
+- Yahoo is authoritative for fantasy roster state, player eligibility, fantasy
+  market ownership, fantasy status, league rules, and transaction context.
+- Official NHL data is authoritative for canonical NHL identity, schedule,
+  game facts, official box-score production, and official shift information.
+- MoneyPuck is the initial underlying-performance and recent-trend provider.
+  Approved downloadable datasets are used rather than scraping unlisted pages.
+  MoneyPuck playerId is the canonical numeric NHL playerId, so no additional
+  player-identity crosswalk is required.
+- NHL EDGE is an optional advanced-tracking enrichment source. Its skating,
+  shot-location, zone, and goalie tracking signals must demonstrate useful
+  incremental predictive value before they receive material model weight.
+- Daily Faceoff is the initial volatile deployment source for current lines,
+  power-play units, injuries, and starting-goalie confirmation.
+
+MoneyPuck season-summary skater data is preserved at its native situation
+grain: all, 5on5, 5on4, 4on5, and other. Season, last-10, and last-20 windows
+remain distinct source observations. The provider layer does not decide their
+model weights.
+
+Current-season trend data remains downstream from the season-strength
+projection. Recent production or underlying-process signals must not silently
+replace the preseason/season-strength prior. The daily-value model will define
+how evidence is blended as the current-season sample grows.
+
+Provider failures or unavailable early-season data must remain explicit.
+Missing current-season trend data must not be converted to zero performance.

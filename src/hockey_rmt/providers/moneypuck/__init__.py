@@ -1,0 +1,1 @@
+"""MoneyPuck provider adapters."""
