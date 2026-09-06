@@ -769,3 +769,53 @@ deterministically:
 - game-time-decision is true if any repeated source row marks the player as a
   game-time decision;
 - all unique deployment assignments remain preserved.
+
+## Daily Faceoff Player Identity Bridge
+
+Daily Faceoff playerId values remain source-specific and are never treated as
+NHL playerId values.
+
+Daily Faceoff deployment identity uses the existing canonical NHL player
+registry and the shared `normalize_player_name()` primitive. The Yahoo-specific
+`resolve_player_identities()` workflow is not reused because its team and
+provider-player contracts are Yahoo-specific.
+
+The Daily Faceoff bridge is intentionally conservative. A source player is
+resolved only when:
+
+1. the normalized Daily Faceoff player name matches the normalized NHL player
+   name exactly; and
+2. exactly one matching NHL identity has the same NHL team abbreviation as the
+   Daily Faceoff deployment snapshot.
+
+No fuzzy name matching is allowed. Daily Faceoff deployment-position labels
+are not used as identity evidence because special-teams and off-ice rows can
+contain assignment positions such as `sk1`, `sk2`, or IR slots rather than the
+player's canonical NHL position.
+
+A unique normalized name does not override a team mismatch. A source/NHL team
+disagreement may indicate stale or projected deployment data and therefore
+remains explicitly unresolved.
+
+The bridge returns the existing canonical `PlayerIdentityResolution` domain
+type. The Daily Faceoff `source_player_id` is retained in
+`provider_player_key`; the source deployment snapshot remains responsible for
+the player's Daily Faceoff name, statuses, assignments, and freshness
+metadata.
+
+### Reviewed Daily Faceoff identity overrides
+
+A reviewed Daily Faceoff playerId -> NHL playerId override may be added only
+when official NHL evidence proves that a deterministic name mismatch represents
+the same player.
+
+An override may bridge the reviewed display-name difference, but it does not
+override team identity. The NHL identity referenced by the override must still
+have the same canonical NHL team abbreviation as the Daily Faceoff deployment
+snapshot. Unknown source player IDs, unknown NHL player IDs, duplicate NHL
+assignments, and override team mismatches are rejected.
+
+The initial reviewed exception is Daily Faceoff playerId `31504`,
+`Matthew Savoie`, mapped to official NHL playerId `8483512`, `Matt Savoie`.
+The mapping was verified against both the official NHL player landing endpoint
+and the official NHL current Edmonton roster on 2026-09-06.
