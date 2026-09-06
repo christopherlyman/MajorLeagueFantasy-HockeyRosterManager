@@ -30,6 +30,7 @@ _REQUIRED_COLUMNS = frozenset(
         "team",
         "position",
         "situation",
+        "games_played",
         "icetime",
         "onIce_xGoalsPercentage",
         "I_F_xGoals",
@@ -274,6 +275,20 @@ def parse_skater_performance_trends(
             )
         )
 
+        games_played = (
+            _required_int(
+                row,
+                "games_played",
+            )
+        )
+
+        if games_played < 0:
+            raise MoneyPuckSkaterTrendError(
+                "MoneyPuck games_played "
+                "was negative for NHL playerId "
+                f"{player_id}: {games_played}."
+            )
+
         team = _required_text(
             row,
             "team",
@@ -346,7 +361,10 @@ def parse_skater_performance_trends(
                 situation=(
                     situation
                 ),
-                ice_time=(
+                games_played=(
+                    games_played
+                ),
+                ice_time_seconds=(
                     _required_float(
                         row,
                         "icetime",

@@ -653,3 +653,18 @@ how evidence is blended as the current-season sample grows.
 
 Provider failures or unavailable early-season data must remain explicit.
 Missing current-season trend data must not be converted to zero performance.
+
+MoneyPuck normalization contract:
+
+- `games_played` is retained from the source for sample-size and per-game usage
+  calculations;
+- MoneyPuck `icetime` is measured in seconds and is stored canonically as
+  `ice_time_seconds`;
+- all-situation ice time equals the sum of 5on5, 5on4, 4on5, and other ice
+  time;
+- TOI/game is calculated as `ice_time_seconds / games_played / 60`;
+- event-rate metrics are normalized per 60 minutes using source ice time;
+- a zero-game or zero-ice-time observation has explicit `no_sample` state and
+  derived rate values remain null rather than becoming zero;
+- normalization does not assign recommendation weight or fantasy-point
+  adjustment. Trend weighting remains a downstream modeling decision.

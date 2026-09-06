@@ -34,6 +34,10 @@ VALID_MONEYPUCK_SITUATIONS = frozenset(
 )
 
 
+RATE_AVAILABLE = "available"
+RATE_NO_SAMPLE = "no_sample"
+
+
 @dataclass(frozen=True)
 class SkaterPerformanceTrend:
     source: str
@@ -47,7 +51,8 @@ class SkaterPerformanceTrend:
     position: str
     situation: str
 
-    ice_time: float
+    games_played: int
+    ice_time_seconds: float
 
     individual_expected_goals: float
     shots_on_goal: float
@@ -60,5 +65,41 @@ class SkaterPerformanceTrend:
 
     shots_blocked: float
     penalties: float
+
+    on_ice_expected_goals_percentage: float
+
+
+@dataclass(frozen=True)
+class SkaterPerformanceRate:
+    source: str
+
+    season_id: int
+    window: str
+
+    nhl_player_id: int
+    full_name: str
+    nhl_team_abbr: str
+    position: str
+    situation: str
+
+    games_played: int
+    ice_time_seconds: float
+    rate_state: str
+
+    toi_per_game_minutes: float | None
+
+    expected_goals_per_60: float | None
+    shots_on_goal_per_60: float | None
+    shot_attempts_per_60: float | None
+    high_danger_shots_per_60: float | None
+
+    goals_per_60: float | None
+    goals_minus_expected_per_60: float | None
+
+    primary_assists_per_60: float | None
+    secondary_assists_per_60: float | None
+
+    shots_blocked_per_60: float | None
+    penalties_per_60: float | None
 
     on_ice_expected_goals_percentage: float
