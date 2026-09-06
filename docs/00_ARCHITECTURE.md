@@ -668,3 +668,54 @@ MoneyPuck normalization contract:
   derived rate values remain null rather than becoming zero;
 - normalization does not assign recommendation weight or fantasy-point
   adjustment. Trend weighting remains a downstream modeling decision.
+
+## Current-Season Trend Interpretation
+
+Current-season trend interpretation remains separate from the season-strength
+projection and from final daily expected fantasy value.
+
+The first interpretation layer produces transparent evidence labels rather
+than a single opaque score.
+
+Role/usage evidence compares season, last-20, and last-10 observations for:
+
+- total TOI per game;
+- 5-on-4 TOI per game.
+
+A sustained change of at least 1.0 total minute per game or 0.5 power-play
+minutes per game is provisionally treated as meaningful role movement.
+Role evidence is labeled expanding, stable, shrinking, mixed, or
+insufficient_sample.
+
+Underlying-process evidence compares normalized per-60 rates for:
+
+- individual expected goals;
+- shots on goal;
+- individual shot attempts;
+- individual high-danger shots;
+- primary assists.
+
+A metric receives improving or declining evidence only when both last-20 and
+last-10 differ from the season rate by at least 15 percent in the same
+direction. Three of the five process metrics must agree, with no more than one
+opposing metric, before the aggregate process label becomes improving or
+declining. Otherwise the result remains stable or mixed.
+
+Very small season baselines use an explicit metric-specific denominator floor
+so near-zero values do not create arbitrarily large percentage changes.
+
+Finishing evidence compares actual goals minus expected goals per 60 against
+the player's own season baseline. Recent finishing at least 0.25 goals per 60
+above the season baseline in both last-20 and last-10 is labeled hot; the
+inverse is labeled cold. This describes recent finishing behavior only and
+does not assume that the difference is purely luck or automatically regress
+it.
+
+Role evidence requires at least 10 season games, 10 last-20 games, and 5
+last-10 games. Underlying-process and finishing evidence require at least 20
+season games, 10 last-20 games, and 5 last-10 games. Smaller samples remain
+explicitly insufficient rather than forcing a directional label.
+
+These thresholds are provisional interpretable heuristics. They do not alter
+projected fantasy points or recommendations until retrospective evaluation
+shows that the signals improve prediction of future NFHL production.
