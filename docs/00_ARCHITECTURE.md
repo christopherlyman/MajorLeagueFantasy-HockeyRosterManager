@@ -819,3 +819,43 @@ The initial reviewed exception is Daily Faceoff playerId `31504`,
 `Matthew Savoie`, mapped to official NHL playerId `8483512`, `Matt Savoie`.
 The mapping was verified against both the official NHL player landing endpoint
 and the official NHL current Edmonton roster on 2026-09-06.
+
+## Current-Season NFHL Production
+
+Current-season realized fantasy production is a separate downstream signal from
+the season-strength projection.
+
+Official NHL season aggregate statistics remain the authoritative source for
+realized current-season counting statistics. The existing NFHL scoring
+functions remain the single implementation of league category weights for both
+historical and current-season aggregates. The current-production layer does not
+reimplement fantasy scoring.
+
+The existing `HistoricalFantasyValue` season aggregate is accepted as an
+internal scored input because its fields are season-generic: NHL playerId,
+player type, season, games played, total fantasy points, fantasy points per
+game, and scoring components. The current-production adapter supplies the
+distinct current-season semantics used downstream.
+
+Current-season production is aligned to the canonical player-strength pool so
+every fantasy-provider player has an explicit production state:
+
+- `available`: the resolved NHL player has at least one current-season game and
+  a valid NFHL fantasy-points-per-game value;
+- `no_sample`: NHL identity is resolved, but no current-season game sample is
+  available yet;
+- `identity_unresolved`: the fantasy-provider player has no canonical NHL
+  playerId.
+
+`no_sample` and `identity_unresolved` never synthesize zero fantasy production.
+Their total fantasy points, fantasy points per game, and scoring components
+remain null. `games_played` is zero because that is the explicit sample-size
+state, not a performance estimate.
+
+The official NHL statistics API may legitimately return an empty current-season
+population before regular-season games begin. That condition is represented as
+`no_sample` for resolved players rather than as an error.
+
+This layer does not decide how quickly current-season production supersedes the
+preseason/season-strength prior. Blend weighting remains a separate daily-value
+modeling decision and must be calibrated or otherwise explicitly justified.
