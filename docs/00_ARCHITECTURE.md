@@ -859,3 +859,41 @@ population before regular-season games begin. That condition is represented as
 This layer does not decide how quickly current-season production supersedes the
 preseason/season-strength prior. Blend weighting remains a separate daily-value
 modeling decision and must be calibrated or otherwise explicitly justified.
+
+## Baseline Daily Expected NFHL Value
+
+Daily expected fantasy value is calculated for a specific NHL game date and is
+separate from the season-level player-strength projection.
+
+The first baseline implementation intentionally applies no current-production,
+trend, deployment, injury, matchup, or goalie-start adjustment. It establishes
+the deterministic target-date scoring contract onto which those downstream
+adjustments can later be added.
+
+Baseline semantics:
+
+- `scheduled` plus an available season-strength projection produces baseline
+  expected NFHL points equal to the player's projected season-strength FPPG;
+- `off` produces exactly `0.0` expected fantasy points because a known
+  non-playing date has no scoring opportunity;
+- `unknown_team` produces `schedule_unknown` with null expected fantasy points;
+- a scheduled player without an available strength projection produces
+  `strength_unavailable` with null expected fantasy points.
+
+A known off-day zero is therefore fundamentally different from missing player
+value. Missing strength or unresolved scheduling must never be converted to
+zero.
+
+The service requires exact provider-player-key coverage between player strength
+and target-date game context, rejects duplicate keys and season/date
+mismatches, and preserves player-strength input order.
+
+The baseline season-strength FPPG remains available for explanation even when
+the player is off or the schedule is unresolved. It is not itself interpreted
+as target-date opportunity.
+
+This baseline is not the final daily projection model. Current-season realized
+production, MoneyPuck process/usage evidence, Daily Faceoff deployment,
+injury/status evidence, opponent context, rest, and confirmed goalie starts
+remain explicit downstream adjustments. Their weights are not implied by this
+baseline.
