@@ -27,7 +27,7 @@ class ThreeDayRankingError(
     """Three-day ranking construction failed."""
 
 
-def _finite_nonnegative(
+def _finite_number(
     value: float,
     *,
     label: str,
@@ -36,15 +36,12 @@ def _finite_nonnegative(
         value
     )
 
-    if (
-        not math.isfinite(
-            result
-        )
-        or result < 0
+    if not math.isfinite(
+        result
     ):
         raise ThreeDayRankingError(
-            f"{label} must be finite and "
-            f"nonnegative: {value!r}."
+            f"{label} must be finite: "
+            f"{value!r}."
         )
 
     return result
@@ -94,7 +91,7 @@ def _index_daily_values(
             row.expected_fantasy_points
             is not None
         ):
-            _finite_nonnegative(
+            _finite_number(
                 row.expected_fantasy_points,
                 label=(
                     "Daily expected fantasy "
@@ -147,7 +144,7 @@ def _daily_ranks(
             )
 
         expected = (
-            _finite_nonnegative(
+            _finite_number(
                 row.expected_fantasy_points,
                 label=(
                     "Available daily expected "

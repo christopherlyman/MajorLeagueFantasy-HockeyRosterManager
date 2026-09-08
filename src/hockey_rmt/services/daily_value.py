@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from collections.abc import Sequence
 from datetime import date
 
@@ -179,11 +181,13 @@ def build_baseline_daily_expected_values(
 
         if (
             baseline_fppg is not None
-            and baseline_fppg < 0
+            and not math.isfinite(
+                baseline_fppg
+            )
         ):
             raise DailyValueError(
                 "Available player strength "
-                "contained negative FPPG for "
+                "contained non-finite FPPG for "
                 f"{key!r}: "
                 f"{baseline_fppg}."
             )

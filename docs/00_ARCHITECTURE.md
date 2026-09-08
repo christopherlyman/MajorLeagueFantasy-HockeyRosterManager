@@ -884,6 +884,11 @@ A known off-day zero is therefore fundamentally different from missing player
 value. Missing strength or unresolved scheduling must never be converted to
 zero.
 
+Fantasy values are signed finite quantities. Negative expected values are
+valid and must be preserved, particularly for goalies under NFHL scoring where
+goals allowed carry a negative fantasy-point weight. Validation rejects
+non-finite values but does not reject or clamp legitimate negative values.
+
 The service requires exact provider-player-key coverage between player strength
 and target-date game context, rejects duplicate keys and season/date
 mismatches, and preserves player-strength input order.
@@ -927,6 +932,10 @@ individual daily expected values and produces:
 Known off-days contribute exactly zero expected points to the three-day total
 but do not receive a daily playing rank. Missing or unresolved daily values do
 not become zero; any such value keeps the three-day total unresolved.
+
+Daily and three-day rankings preserve signed expected fantasy values. A player
+with a legitimate negative playing expectation remains rankable below players
+with higher values; negative performance is not converted to an off-day zero.
 
 The initial Streamlit Three-Day Decision View is intentionally backed by the
 baseline daily expected-value model. Current-season production, MoneyPuck

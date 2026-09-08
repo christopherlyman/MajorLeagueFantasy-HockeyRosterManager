@@ -37,3 +37,5 @@ instances/*/runtime/
 *.sqlite
 *.sqlite3
 *.db
+# Runtime-generated application state
+data/runtime/
