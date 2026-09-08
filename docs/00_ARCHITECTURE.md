@@ -897,3 +897,43 @@ production, MoneyPuck process/usage evidence, Daily Faceoff deployment,
 injury/status evidence, opponent context, rest, and confirmed goalie starts
 remain explicit downstream adjustments. Their weights are not implied by this
 baseline.
+
+## Three-Day Decision View
+
+The NFHL Roster Manager's primary short-horizon decision surface is a permanent
+three-day window:
+
+- Today;
+- Tomorrow;
+- Day+2.
+
+This horizon is a roster-management requirement rather than presentation-only
+UI. NFHL drop, waiver, and reacquisition decisions can create a period during
+which the manager cannot immediately recover a released player. Evaluating only
+the current date would therefore hide relevant near-term opportunity cost.
+
+For every Yahoo player, the three-day ranking layer preserves the three
+individual daily expected values and produces:
+
+- a rank for each date when the player has a usable expected value and is
+  scheduled to play;
+- the actual expected fantasy points for each date;
+- opponent and home/away context for each date;
+- the number of scheduled games in the three-day window;
+- total expected NFHL points across the three dates when all three daily values
+  are known;
+- a deterministic three-day rank.
+
+Known off-days contribute exactly zero expected points to the three-day total
+but do not receive a daily playing rank. Missing or unresolved daily values do
+not become zero; any such value keeps the three-day total unresolved.
+
+The initial Streamlit Three-Day Decision View is intentionally backed by the
+baseline daily expected-value model. Current-season production, MoneyPuck
+trend/process evidence, Daily Faceoff deployment, injury/status evidence,
+goalie-start probability, and matchup effects will improve the same screen
+without changing the three-day product contract.
+
+Runtime ranking snapshots are presentation handoff artifacts, not sources of
+business truth. Ranking logic remains in the Hockey Roster Manager domain and
+service layers; Streamlit consumes the resulting snapshot.
