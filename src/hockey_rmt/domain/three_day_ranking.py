@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from dataclasses import dataclass
 from datetime import date
 
@@ -19,6 +21,7 @@ class RankedDayValue:
     opponent_team_abbr: str | None = None
     home_away: str | None = None
     provider_game_id: str | None = None
+    start_time_utc: datetime | None = None
 
 
 @dataclass(frozen=True)

@@ -2,20 +2,22 @@ from __future__ import annotations
 
 import os
 
+from datetime import (
+    datetime,
+    timezone,
+)
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import streamlit as st
 
 from hockey_rmt.ui.three_day_snapshot import (
-    ThreeDaySnapshotError,
     load_three_day_snapshot,
 )
 
 
 PROJECT_ROOT = (
-    Path(
-        __file__
-    )
+    Path(__file__)
     .resolve()
     .parents[3]
 )
@@ -27,297 +29,363 @@ DEFAULT_SNAPSHOT_PATH = (
     / "three_day_rankings.json"
 )
 
-MODEL_WARNING = (
-    "Baseline model — current-season production, "
-    "MoneyPuck trend, Daily Faceoff deployment, "
-    "injury/status, goalie-start, and matchup "
-    "adjustments are not yet applied."
+EASTERN_TIME = (
+    ZoneInfo(
+        "America/New_York"
+    )
 )
 
 
 def _snapshot_path() -> Path:
-    configured = os.environ.get(
+    value = os.environ.get(
         "HOCKEY_RMT_THREE_DAY_SNAPSHOT"
     )
 
-    if configured:
+    if value:
         return Path(
-            configured
+            value
         )
 
     return DEFAULT_SNAPSHOT_PATH
 
 
-def _fmt_points(
-    value,
+def _player_name(
+    row: dict,
 ) -> str:
-    if value is None:
-        return "—"
-
-    return f"{float(value):.2f}"
-
-
-def _fmt_rank(
-    value,
-) -> str:
-    if value is None:
-        return "—"
-
     return str(
-        int(
-            value
+        row.get(
+            "full_name",
+            "",
         )
     )
 
 
-def _opponent_text(
-    day,
+def _player_type(
+    row: dict,
 ) -> str:
-    opponent = day.get(
-        "opponent"
+    value = str(
+        row.get(
+            "player_type",
+            "",
+        )
+    ).strip()
+
+    if value.casefold() in {
+        "goalie",
+        "g",
+    }:
+        return "G"
+
+    if value.casefold() in {
+        "skater",
+        "p",
+    }:
+        return "P"
+
+    return value or "—"
+
+
+def _team(
+    row: dict,
+) -> str:
+    for key in (
+        "today",
+        "tomorrow",
+        "day_plus_2",
+    ):
+        day = (
+            row.get(key)
+            or {}
+        )
+
+        value = (
+            day.get(
+                "team"
+            )
+            or day.get(
+                "nhl_team_abbr"
+            )
+        )
+
+        if value:
+            return str(
+                value
+            )
+
+    return "—"
+
+
+def _daily_rank(
+    day: dict,
+):
+    value = day.get(
+        "daily_rank"
+    )
+
+    if value is None:
+        value = day.get(
+            "rank"
+        )
+
+    return value
+
+
+def _daily_expected(
+    day: dict,
+):
+    value = day.get(
+        "expected_fantasy_points"
+    )
+
+    if value is None:
+        value = day.get(
+            "expected_points"
+        )
+
+    return value
+
+
+def _three_day_expected(
+    row: dict,
+):
+    value = row.get(
+        "three_day_expected_fantasy_points"
+    )
+
+    if value is None:
+        value = row.get(
+            "three_day_expected_points"
+        )
+
+    return value
+
+
+def _format_game_time(
+    value,
+) -> str:
+    if value in (
+        None,
+        "",
+    ):
+        return ""
+
+    if isinstance(
+        value,
+        datetime,
+    ):
+        moment = value
+    else:
+        text = str(
+            value
+        ).strip()
+
+        if text.endswith(
+            "Z"
+        ):
+            text = (
+                text[:-1]
+                + "+00:00"
+            )
+
+        try:
+            moment = datetime.fromisoformat(
+                text
+            )
+        except ValueError:
+            return ""
+
+    if moment.tzinfo is None:
+        moment = moment.replace(
+            tzinfo=timezone.utc
+        )
+
+    eastern = moment.astimezone(
+        EASTERN_TIME
+    )
+
+    return (
+        eastern.strftime(
+            "%I:%M %p"
+        )
+        .lstrip("0")
+    )
+
+
+def _matchup(
+    day: dict,
+) -> str:
+    if (
+        day.get(
+            "schedule_state"
+        )
+        == "off"
+    ):
+        return "OFF"
+
+    opponent = (
+        day.get(
+            "opponent_team_abbr"
+        )
+        or day.get(
+            "opponent"
+        )
     )
 
     if not opponent:
-        schedule_state = day.get(
-            "schedule_state"
+        return ""
+
+    home_away = str(
+        day.get(
+            "home_away",
+            "",
         )
-
-        if schedule_state == "off":
-            return "OFF"
-
-        return "—"
-
-    home_away = day.get(
-        "home_away"
-    )
+    ).casefold()
 
     if home_away == "home":
-        return f"vs {opponent}"
+        prefix = "vs"
+    elif home_away == "away":
+        prefix = "@"
+    else:
+        prefix = ""
 
-    if home_away == "away":
-        return f"@ {opponent}"
-
-    return str(
-        opponent
+    text = (
+        f"{prefix} {opponent}"
+        .strip()
     )
 
-
-def _day_column_prefix(
-    label,
-    day,
-):
-    return {
-        f"{label} Rank": (
-            _fmt_rank(
-                day.get(
-                    "rank"
-                )
-            )
-        ),
-        f"{label} Exp": (
-            _fmt_points(
-                day.get(
-                    "expected_points"
-                )
-            )
-        ),
-        f"{label} Opp": (
-            _opponent_text(
-                day
-            )
-        ),
-    }
-
-
-def _display_rows(
-    payload,
-):
-    result = []
-
-    for row in payload[
-        "rows"
-    ]:
-        today = row[
-            "today"
-        ]
-
-        tomorrow = row[
-            "tomorrow"
-        ]
-
-        day_plus_2 = row[
-            "day_plus_2"
-        ]
-
-        display = {
-            "3D Rank": (
-                _fmt_rank(
-                    row.get(
-                        "three_day_rank"
-                    )
-                )
-            ),
-            "Player": (
-                row[
-                    "full_name"
-                ]
-            ),
-            "Type": (
-                row[
-                    "player_type"
-                ]
-            ),
-            "Team": (
-                today.get(
-                    "team"
-                )
-                or tomorrow.get(
-                    "team"
-                )
-                or day_plus_2.get(
-                    "team"
-                )
-                or "—"
-            ),
-        }
-
-        display.update(
-            _day_column_prefix(
-                "Today",
-                today,
+    game_time = (
+        _format_game_time(
+            day.get(
+                "start_time_utc"
             )
         )
+    )
 
-        display.update(
-            _day_column_prefix(
-                "Tomorrow",
-                tomorrow,
-            )
+    if game_time:
+        text = (
+            f"{text} {game_time}"
         )
 
-        display.update(
-            _day_column_prefix(
-                "Day+2",
-                day_plus_2,
-            )
+    return text
+
+
+def _day_cell(
+    day: dict,
+) -> str:
+    state = day.get(
+        "schedule_state"
+    )
+
+    if state == "off":
+        return "OFF"
+
+    rank = _daily_rank(
+        day
+    )
+
+    expected = _daily_expected(
+        day
+    )
+
+    if (
+        rank is not None
+        and expected is not None
+    ):
+        result = (
+            f"{int(rank)} "
+            f"({float(expected):.2f})"
         )
 
-        display[
-            "3D Games"
-        ] = int(
-            row[
-                "scheduled_games"
-            ]
+    elif expected is not None:
+        result = (
+            f"— "
+            f"({float(expected):.2f})"
         )
 
-        display[
-            "3D Exp"
-        ] = (
-            _fmt_points(
-                row.get(
-                    "three_day_expected_points"
-                )
-            )
-        )
+    else:
+        result = "—"
 
-        display[
-            "_three_day_rank"
-        ] = (
-            row.get(
-                "three_day_rank"
-            )
-        )
+    matchup = _matchup(
+        day
+    )
 
-        display[
-            "_today_rank"
-        ] = (
-            today.get(
-                "rank"
-            )
-        )
-
-        display[
-            "_tomorrow_rank"
-        ] = (
-            tomorrow.get(
-                "rank"
-            )
-        )
-
-        display[
-            "_day2_rank"
-        ] = (
-            day_plus_2.get(
-                "rank"
-            )
-        )
-
-        display[
-            "_player_type"
-        ] = (
-            row[
-                "player_type"
-            ]
-        )
-
-        result.append(
-            display
+    if matchup:
+        return (
+            f"{result} · "
+            f"{matchup}"
         )
 
     return result
 
 
-def _sort_rows(
-    rows,
-    mode,
+def _three_day_cell(
+    row: dict,
+) -> str:
+    rank = row.get(
+        "three_day_rank"
+    )
+
+    expected = (
+        _three_day_expected(
+            row
+        )
+    )
+
+    if (
+        rank is None
+        or expected is None
+    ):
+        return "—"
+
+    return (
+        f"{int(rank)} "
+        f"({float(expected):.2f})"
+    )
+
+
+def _sort_rank(
+    row: dict,
+    choice: str,
 ):
-    field_by_mode = {
-        "3-Day Rank": (
-            "_three_day_rank"
-        ),
-        "Today Rank": (
-            "_today_rank"
-        ),
-        "Tomorrow Rank": (
-            "_tomorrow_rank"
-        ),
-        "Day+2 Rank": (
-            "_day2_rank"
-        ),
-    }
+    if choice == "Today Rank":
+        value = _daily_rank(
+            row.get(
+                "today",
+                {},
+            )
+        )
 
-    field = field_by_mode[
-        mode
-    ]
+    elif choice == "Tomorrow Rank":
+        value = _daily_rank(
+            row.get(
+                "tomorrow",
+                {},
+            )
+        )
 
-    return sorted(
-        rows,
-        key=lambda row: (
-            row[
-                field
-            ]
-            is None,
-            (
-                row[
-                    field
-                ]
-                if row[
-                    field
-                ]
-                is not None
-                else 10**9
-            ),
-            row[
-                "Player"
-            ].casefold(),
-        ),
+    elif choice == "Day+2 Rank":
+        value = _daily_rank(
+            row.get(
+                "day_plus_2",
+                {},
+            )
+        )
+
+    else:
+        value = row.get(
+            "three_day_rank"
+        )
+
+    if value is None:
+        return 10**9
+
+    return int(
+        value
     )
 
 
 st.set_page_config(
-    page_title=(
-        "NFHL Roster Manager"
-    ),
+    page_title="NFHL Roster Manager",
     page_icon="🏒",
     layout="wide",
 )
@@ -326,263 +394,332 @@ st.title(
     "NFHL Roster Manager"
 )
 
-snapshot_path = (
-    _snapshot_path()
-)
+path = _snapshot_path()
 
-try:
-    payload = (
-        load_three_day_snapshot(
-            snapshot_path
-        )
-    )
-except ThreeDaySnapshotError as exc:
+if not path.exists():
     st.subheader(
         "3-Day Decision View"
     )
 
     st.warning(
-        "No live three-day ranking snapshot "
-        "is available yet."
-    )
-
-    st.caption(
-        "The UI is installed. The next refresh "
-        "step will populate it from Yahoo, NHL "
-        "schedule context, and the baseline "
-        "daily expected-value model."
-    )
-
-    st.code(
-        str(
-            snapshot_path
-        ),
-        language=None,
+        "No live three-day ranking "
+        "snapshot is available yet."
     )
 
     st.stop()
 
 
-league_name = payload[
-    "league_name"
-]
-
-team_name = payload[
-    "team_name"
-]
-
-base_date = payload[
-    "base_date"
-]
+snapshot = (
+    load_three_day_snapshot(
+        path
+    )
+)
 
 st.caption(
-    f"{league_name} · {team_name} · "
-    f"Base date {base_date}"
+    f"{snapshot.get('league_name', 'NFHL')}"
+    f" · {snapshot.get('team_name', '')}"
+    f" · Base date "
+    f"{snapshot.get('base_date', '')}"
 )
 
-st.info(
-    payload.get(
-        "model_label"
-    )
-    or MODEL_WARNING
+model_label = snapshot.get(
+    "model_label"
 )
+
+if model_label:
+    st.info(
+        model_label
+    )
+
 
 st.subheader(
     "3-Day Decision View"
 )
 
-rows = _display_rows(
-    payload
-)
-
-total_players = len(
-    rows
-)
-
-today_games = sum(
-    1
-    for row
-    in payload[
-        "rows"
-    ]
-    if (
-        row[
-            "today"
-        ][
-            "schedule_state"
-        ]
-        == "scheduled"
+rows = list(
+    snapshot.get(
+        "rows",
+        []
     )
 )
 
-tomorrow_games = sum(
-    1
-    for row
-    in payload[
-        "rows"
-    ]
-    if (
-        row[
-            "tomorrow"
-        ][
-            "schedule_state"
-        ]
-        == "scheduled"
-    )
+
+metrics = st.columns(
+    4
 )
 
-day2_games = sum(
-    1
-    for row
-    in payload[
-        "rows"
-    ]
-    if (
-        row[
-            "day_plus_2"
-        ][
-            "schedule_state"
-        ]
-        == "scheduled"
-    )
-)
-
-metric_1, metric_2, metric_3, metric_4 = (
-    st.columns(
-        4
-    )
-)
-
-metric_1.metric(
+metrics[0].metric(
     "Players",
-    total_players,
+    len(rows),
 )
 
-metric_2.metric(
-    "Playing Today",
-    today_games,
-)
-
-metric_3.metric(
-    "Playing Tomorrow",
-    tomorrow_games,
-)
-
-metric_4.metric(
-    "Playing Day+2",
-    day2_games,
-)
-
-
-filter_col, type_col, sort_col = (
-    st.columns(
+for index, (
+    label,
+    key,
+) in enumerate(
+    (
         (
-            2,
-            1,
-            1,
+            "Playing Today",
+            "today",
+        ),
+        (
+            "Playing Tomorrow",
+            "tomorrow",
+        ),
+        (
+            "Playing Day+2",
+            "day_plus_2",
+        ),
+    ),
+    start=1,
+):
+    count = sum(
+        1
+        for row in rows
+        if (
+            row.get(
+                key,
+                {},
+            ).get(
+                "schedule_state"
+            )
+            == "scheduled"
         )
+    )
+
+    metrics[
+        index
+    ].metric(
+        label,
+        count,
+    )
+
+
+filters = st.columns(
+    (
+        2,
+        1,
+        1,
     )
 )
 
-with filter_col:
-    name_filter = (
-        st.text_input(
-            "Find player",
-            placeholder=(
-                "Search by player name"
-            ),
-        )
+with filters[0]:
+    search_text = st.text_input(
+        "Find player",
+        placeholder=(
+            "Search by player name"
+        ),
+    )
+
+with filters[1]:
+    player_type = st.selectbox(
+        "Player type",
+        (
+            "All",
+            "Skaters",
+            "Goalies",
+        ),
+    )
+
+with filters[2]:
+    sort_by = st.selectbox(
+        "Sort by",
+        (
+            "3-Day Rank",
+            "Today Rank",
+            "Tomorrow Rank",
+            "Day+2 Rank",
+        ),
+    )
+
+
+filtered = rows
+
+if search_text.strip():
+    needle = (
+        search_text
         .strip()
         .casefold()
     )
 
-with type_col:
-    player_type = (
-        st.selectbox(
-            "Player type",
-            (
-                "All",
-                "skater",
-                "goalie",
-            ),
-        )
-    )
-
-with sort_col:
-    sort_mode = (
-        st.selectbox(
-            "Sort by",
-            (
-                "3-Day Rank",
-                "Today Rank",
-                "Tomorrow Rank",
-                "Day+2 Rank",
-            ),
-        )
-    )
-
-
-if name_filter:
-    rows = [
+    filtered = [
         row
-        for row
-        in rows
-        if (
-            name_filter
-            in row[
-                "Player"
-            ].casefold()
-        )
+        for row in filtered
+        if needle
+        in _player_name(
+            row
+        ).casefold()
     ]
 
-if player_type != "All":
-    rows = [
+
+if player_type == "Skaters":
+    filtered = [
         row
-        for row
-        in rows
-        if (
-            row[
-                "_player_type"
-            ]
-            == player_type
+        for row in filtered
+        if _player_type(
+            row
         )
+        != "G"
     ]
 
-rows = _sort_rows(
-    rows,
-    sort_mode,
+elif player_type == "Goalies":
+    filtered = [
+        row
+        for row in filtered
+        if _player_type(
+            row
+        )
+        == "G"
+    ]
+
+
+filtered = sorted(
+    filtered,
+    key=lambda row: (
+        _sort_rank(
+            row,
+            sort_by,
+        ),
+        _player_name(
+            row
+        ).casefold(),
+        str(
+            row.get(
+                "provider_player_key",
+                "",
+            )
+        ),
+    ),
 )
 
-hidden = {
-    "_three_day_rank",
-    "_today_rank",
-    "_tomorrow_rank",
-    "_day2_rank",
-    "_player_type",
-}
 
 table_rows = [
     {
-        key: value
-        for key, value
-        in row.items()
-        if key not in hidden
+        "3D": (
+            _three_day_cell(
+                row
+            )
+        ),
+        "Player": (
+            _player_name(
+                row
+            )
+        ),
+        "Type": (
+            _player_type(
+                row
+            )
+        ),
+        "Team": (
+            _team(
+                row
+            )
+        ),
+        "Today": (
+            _day_cell(
+                row.get(
+                    "today",
+                    {},
+                )
+            )
+        ),
+        "Tmr": (
+            _day_cell(
+                row.get(
+                    "tomorrow",
+                    {},
+                )
+            )
+        ),
+        "D+2": (
+            _day_cell(
+                row.get(
+                    "day_plus_2",
+                    {},
+                )
+            )
+        ),
+        "Games": (
+            row.get(
+                "scheduled_games"
+            )
+        ),
     }
-    for row
-    in rows
+    for row in filtered
 ]
+
 
 st.dataframe(
     table_rows,
-    use_container_width=True,
     hide_index=True,
+    use_container_width=True,
+    column_order=(
+        "3D",
+        "Player",
+        "Type",
+        "Team",
+        "Today",
+        "Tmr",
+        "D+2",
+        "Games",
+    ),
+    column_config={
+        "3D": (
+            st.column_config.TextColumn(
+                "3D",
+                width="small",
+            )
+        ),
+        "Player": (
+            st.column_config.TextColumn(
+                "Player",
+                width="medium",
+            )
+        ),
+        "Type": (
+            st.column_config.TextColumn(
+                "Type",
+                width="small",
+            )
+        ),
+        "Team": (
+            st.column_config.TextColumn(
+                "Team",
+                width="small",
+            )
+        ),
+        "Today": (
+            st.column_config.TextColumn(
+                "Today",
+                width="medium",
+            )
+        ),
+        "Tmr": (
+            st.column_config.TextColumn(
+                "Tmr",
+                width="medium",
+            )
+        ),
+        "D+2": (
+            st.column_config.TextColumn(
+                "D+2",
+                width="medium",
+            )
+        ),
+        "Games": (
+            st.column_config.NumberColumn(
+                "Games",
+                width="small",
+                format="%d",
+            )
+        ),
+    },
 )
 
 st.caption(
-    "Daily ranks include players with a usable "
-    "projection who are scheduled to play that "
-    "day. OFF contributes 0.00 expected points "
-    "but receives no daily rank. A missing or "
-    "unresolved value remains unknown and makes "
-    "the 3-day expected total unavailable."
+    "Format: rank (expected NFHL points) · "
+    "matchup puck-drop time. "
+    "Times are Eastern. "
+    "OFF = known off-day; "
+    "— = unresolved or missing value."
 )

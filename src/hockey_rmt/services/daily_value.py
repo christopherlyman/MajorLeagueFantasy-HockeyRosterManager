@@ -289,6 +289,7 @@ def build_baseline_daily_expected_values(
                 home_away=(
                     context.home_away
                 ),
+                start_time_utc=context.start_time_utc,
             )
         )
 

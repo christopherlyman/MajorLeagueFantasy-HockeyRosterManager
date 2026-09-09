@@ -946,3 +946,20 @@ without changing the three-day product contract.
 Runtime ranking snapshots are presentation handoff artifacts, not sources of
 business truth. Ranking logic remains in the Hockey Roster Manager domain and
 service layers; Streamlit consumes the resulting snapshot.
+
+### Compact Three-Day Decision Table
+
+The Streamlit three-day table combines daily rank, expected NFHL points,
+matchup, and puck-drop time into one cell for Today, Tomorrow, and Day+2. A
+scheduled example is `1 (7.92) · @ BOS 7:00 PM`. A known off-day displays
+`OFF`, while unresolved or missing value displays `—`.
+
+The three-day aggregate combines rank and expected points as `rank (points)`.
+Sorting remains an independent control, so separate daily-rank columns are not
+needed.
+
+Canonical NHL puck-drop time is `start_time_utc`. It is carried unchanged from
+the NHL game object through PlayerGameContext, daily expected value,
+three-day ranking, and runtime snapshot. Presentation converts that UTC value
+to America/New_York for the NFHL interface because game time is operationally
+important for same-day roster decisions.

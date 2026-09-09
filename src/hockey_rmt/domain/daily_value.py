@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from dataclasses import dataclass
 from datetime import date
 
@@ -46,3 +48,4 @@ class DailyExpectedValue:
     provider_game_id: str | None = None
     opponent_team_abbr: str | None = None
     home_away: str | None = None
+    start_time_utc: datetime | None = None

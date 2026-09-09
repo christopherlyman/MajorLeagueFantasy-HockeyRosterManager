@@ -55,6 +55,7 @@ def _day_payload(
         "provider_game_id": (
             row.provider_game_id
         ),
+        "start_time_utc": (row.start_time_utc.isoformat() if row.start_time_utc is not None else None),
     }
 
 

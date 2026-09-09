@@ -238,6 +238,7 @@ def _ranked_day(
         provider_game_id=(
             row.provider_game_id
         ),
+        start_time_utc=row.start_time_utc,
     )
 
 
