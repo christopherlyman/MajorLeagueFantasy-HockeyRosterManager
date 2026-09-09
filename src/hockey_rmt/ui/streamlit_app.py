@@ -29,10 +29,8 @@ DEFAULT_SNAPSHOT_PATH = (
     / "three_day_rankings.json"
 )
 
-EASTERN_TIME = (
-    ZoneInfo(
-        "America/New_York"
-    )
+EASTERN_TIME = ZoneInfo(
+    "America/New_York"
 )
 
 
@@ -70,13 +68,15 @@ def _player_type(
         )
     ).strip()
 
-    if value.casefold() in {
+    lowered = value.casefold()
+
+    if lowered in {
         "goalie",
         "g",
     }:
         return "G"
 
-    if value.casefold() in {
+    if lowered in {
         "skater",
         "p",
     }:
@@ -98,18 +98,18 @@ def _team(
             or {}
         )
 
-        value = (
+        team = (
             day.get(
-                "team"
+                "nhl_team_abbr"
             )
             or day.get(
-                "nhl_team_abbr"
+                "team"
             )
         )
 
-        if value:
+        if team:
             return str(
-                value
+                team
             )
 
     return "—"
@@ -145,19 +145,37 @@ def _daily_expected(
     return value
 
 
-def _three_day_expected(
-    row: dict,
-):
-    value = row.get(
-        "three_day_expected_fantasy_points"
+def _day_cell(
+    day: dict,
+) -> str:
+    state = str(
+        day.get(
+            "schedule_state",
+            "",
+        )
     )
 
-    if value is None:
-        value = row.get(
-            "three_day_expected_points"
-        )
+    if state == "off":
+        return "OFF"
 
-    return value
+    rank = _daily_rank(
+        day
+    )
+
+    expected = _daily_expected(
+        day
+    )
+
+    if (
+        rank is None
+        or expected is None
+    ):
+        return "—"
+
+    return (
+        f"{int(rank)} "
+        f"({float(expected):.2f})"
+    )
 
 
 def _format_game_time(
@@ -174,6 +192,7 @@ def _format_game_time(
         datetime,
     ):
         moment = value
+
     else:
         text = str(
             value
@@ -211,16 +230,21 @@ def _format_game_time(
     )
 
 
-def _matchup(
+def _today_game(
     day: dict,
 ) -> str:
-    if (
+    state = str(
         day.get(
-            "schedule_state"
+            "schedule_state",
+            "",
         )
-        == "off"
-    ):
+    )
+
+    if state == "off":
         return "OFF"
+
+    if state != "scheduled":
+        return "—"
 
     opponent = (
         day.get(
@@ -231,9 +255,6 @@ def _matchup(
         )
     )
 
-    if not opponent:
-        return ""
-
     home_away = str(
         day.get(
             "home_away",
@@ -241,17 +262,23 @@ def _matchup(
         )
     ).casefold()
 
-    if home_away == "home":
-        prefix = "vs"
-    elif home_away == "away":
-        prefix = "@"
-    else:
-        prefix = ""
+    matchup = ""
 
-    text = (
-        f"{prefix} {opponent}"
-        .strip()
-    )
+    if opponent:
+        if home_away == "home":
+            matchup = (
+                f"vs {opponent}"
+            )
+
+        elif home_away == "away":
+            matchup = (
+                f"@ {opponent}"
+            )
+
+        else:
+            matchup = str(
+                opponent
+            )
 
     game_time = (
         _format_game_time(
@@ -261,86 +288,19 @@ def _matchup(
         )
     )
 
-    if game_time:
-        text = (
-            f"{text} {game_time}"
+    if matchup and game_time:
+        return (
+            f"{matchup} "
+            f"{game_time}"
         )
-
-    return text
-
-
-def _day_cell(
-    day: dict,
-) -> str:
-    state = day.get(
-        "schedule_state"
-    )
-
-    if state == "off":
-        return "OFF"
-
-    rank = _daily_rank(
-        day
-    )
-
-    expected = _daily_expected(
-        day
-    )
-
-    if (
-        rank is not None
-        and expected is not None
-    ):
-        result = (
-            f"{int(rank)} "
-            f"({float(expected):.2f})"
-        )
-
-    elif expected is not None:
-        result = (
-            f"— "
-            f"({float(expected):.2f})"
-        )
-
-    else:
-        result = "—"
-
-    matchup = _matchup(
-        day
-    )
 
     if matchup:
-        return (
-            f"{result} · "
-            f"{matchup}"
-        )
+        return matchup
 
-    return result
+    if game_time:
+        return game_time
 
-
-def _three_day_cell(
-    row: dict,
-) -> str:
-    rank = row.get(
-        "three_day_rank"
-    )
-
-    expected = (
-        _three_day_expected(
-            row
-        )
-    )
-
-    if (
-        rank is None
-        or expected is None
-    ):
-        return "—"
-
-    return (
-        f"{int(rank)} "
-        f"({float(expected):.2f})"
-    )
+    return "—"
 
 
 def _sort_rank(
@@ -348,7 +308,7 @@ def _sort_rank(
     choice: str,
 ):
     if choice == "Today Rank":
-        value = _daily_rank(
+        rank = _daily_rank(
             row.get(
                 "today",
                 {},
@@ -356,7 +316,7 @@ def _sort_rank(
         )
 
     elif choice == "Tomorrow Rank":
-        value = _daily_rank(
+        rank = _daily_rank(
             row.get(
                 "tomorrow",
                 {},
@@ -364,7 +324,7 @@ def _sort_rank(
         )
 
     elif choice == "Day+2 Rank":
-        value = _daily_rank(
+        rank = _daily_rank(
             row.get(
                 "day_plus_2",
                 {},
@@ -372,15 +332,15 @@ def _sort_rank(
         )
 
     else:
-        value = row.get(
+        rank = row.get(
             "three_day_rank"
         )
 
-    if value is None:
+    if rank is None:
         return 10**9
 
     return int(
-        value
+        rank
     )
 
 
@@ -394,9 +354,12 @@ st.title(
     "NFHL Roster Manager"
 )
 
-path = _snapshot_path()
 
-if not path.exists():
+snapshot_path = (
+    _snapshot_path()
+)
+
+if not snapshot_path.exists():
     st.subheader(
         "3-Day Decision View"
     )
@@ -411,9 +374,10 @@ if not path.exists():
 
 snapshot = (
     load_three_day_snapshot(
-        path
+        snapshot_path
     )
 )
+
 
 st.caption(
     f"{snapshot.get('league_name', 'NFHL')}"
@@ -421,6 +385,7 @@ st.caption(
     f" · Base date "
     f"{snapshot.get('base_date', '')}"
 )
+
 
 model_label = snapshot.get(
     "model_label"
@@ -435,6 +400,7 @@ if model_label:
 st.subheader(
     "3-Day Decision View"
 )
+
 
 rows = list(
     snapshot.get(
@@ -452,6 +418,7 @@ metrics[0].metric(
     "Players",
     len(rows),
 )
+
 
 for index, (
     label,
@@ -503,6 +470,7 @@ filters = st.columns(
     )
 )
 
+
 with filters[0]:
     search_text = st.text_input(
         "Find player",
@@ -511,15 +479,19 @@ with filters[0]:
         ),
     )
 
+
 with filters[1]:
-    player_type = st.selectbox(
-        "Player type",
-        (
-            "All",
-            "Skaters",
-            "Goalies",
-        ),
+    player_type_filter = (
+        st.selectbox(
+            "Player type",
+            (
+                "All",
+                "Skaters",
+                "Goalies",
+            ),
+        )
     )
+
 
 with filters[2]:
     sort_by = st.selectbox(
@@ -534,6 +506,7 @@ with filters[2]:
 
 
 filtered = rows
+
 
 if search_text.strip():
     needle = (
@@ -552,7 +525,10 @@ if search_text.strip():
     ]
 
 
-if player_type == "Skaters":
+if (
+    player_type_filter
+    == "Skaters"
+):
     filtered = [
         row
         for row in filtered
@@ -562,7 +538,10 @@ if player_type == "Skaters":
         != "G"
     ]
 
-elif player_type == "Goalies":
+elif (
+    player_type_filter
+    == "Goalies"
+):
     filtered = [
         row
         for row in filtered
@@ -595,11 +574,6 @@ filtered = sorted(
 
 table_rows = [
     {
-        "3D": (
-            _three_day_cell(
-                row
-            )
-        ),
         "Player": (
             _player_name(
                 row
@@ -639,9 +613,12 @@ table_rows = [
                 )
             )
         ),
-        "Games": (
-            row.get(
-                "scheduled_games"
+        "Game": (
+            _today_game(
+                row.get(
+                    "today",
+                    {},
+                )
             )
         ),
     }
@@ -654,22 +631,15 @@ st.dataframe(
     hide_index=True,
     use_container_width=True,
     column_order=(
-        "3D",
         "Player",
         "Type",
         "Team",
         "Today",
         "Tmr",
         "D+2",
-        "Games",
+        "Game",
     ),
     column_config={
-        "3D": (
-            st.column_config.TextColumn(
-                "3D",
-                width="small",
-            )
-        ),
         "Player": (
             st.column_config.TextColumn(
                 "Player",
@@ -691,35 +661,36 @@ st.dataframe(
         "Today": (
             st.column_config.TextColumn(
                 "Today",
-                width="medium",
+                width="small",
             )
         ),
         "Tmr": (
             st.column_config.TextColumn(
                 "Tmr",
-                width="medium",
+                width="small",
             )
         ),
         "D+2": (
             st.column_config.TextColumn(
                 "D+2",
-                width="medium",
+                width="small",
             )
         ),
-        "Games": (
-            st.column_config.NumberColumn(
-                "Games",
-                width="small",
-                format="%d",
+        "Game": (
+            st.column_config.TextColumn(
+                "Game",
+                width="medium",
             )
         ),
     },
 )
 
+
 st.caption(
-    "Format: rank (expected NFHL points) · "
-    "matchup puck-drop time. "
+    "Today / Tmr / D+2 = "
+    "rank (expected NFHL points). "
+    "Game = today's matchup and puck-drop time only. "
     "Times are Eastern. "
     "OFF = known off-day; "
-    "— = unresolved or missing value."
+    "— = unresolved or missing."
 )

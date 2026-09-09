@@ -949,17 +949,20 @@ service layers; Streamlit consumes the resulting snapshot.
 
 ### Compact Three-Day Decision Table
 
-The Streamlit three-day table combines daily rank, expected NFHL points,
-matchup, and puck-drop time into one cell for Today, Tomorrow, and Day+2. A
-scheduled example is `1 (7.92) · @ BOS 7:00 PM`. A known off-day displays
-`OFF`, while unresolved or missing value displays `—`.
+The Streamlit decision table uses the compact roster-management layout:
+`Player | Type | Team | Today | Tmr | D+2 | Game`.
 
-The three-day aggregate combines rank and expected points as `rank (points)`.
-Sorting remains an independent control, so separate daily-rank columns are not
-needed.
+Today, Tomorrow, and Day+2 display only `rank (expected NFHL points)`, for
+example `2 (7.24)`. Known off-days display `OFF`; unresolved or missing values
+display `—`.
 
-Canonical NHL puck-drop time is `start_time_utc`. It is carried unchanged from
-the NHL game object through PlayerGameContext, daily expected value,
-three-day ranking, and runtime snapshot. Presentation converts that UTC value
-to America/New_York for the NFHL interface because game time is operationally
-important for same-day roster decisions.
+`Game` is a separate column containing today's matchup and puck-drop time only,
+for example `vs VAN 10:00 PM`. Tomorrow and Day+2 game details remain available
+in the canonical data but are intentionally omitted from the table.
+
+Three-day aggregate rank remains available through the independent Sort control
+and therefore does not require a visible table column.
+
+Canonical NHL puck-drop time is `start_time_utc`. The UTC value is carried
+through PlayerGameContext, daily expected value, three-day ranking, and runtime
+snapshot. The NFHL presentation converts it to America/New_York.
