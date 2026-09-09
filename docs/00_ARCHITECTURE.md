@@ -966,3 +966,11 @@ and therefore does not require a visible table column.
 Canonical NHL puck-drop time is `start_time_utc`. The UTC value is carried
 through PlayerGameContext, daily expected value, three-day ranking, and runtime
 snapshot. The NFHL presentation converts it to America/New_York.
+
+### Signed Canonical Player Strength
+
+Canonical projected fantasy points per game are signed finite quantities.
+Negative projected FPPG is valid, particularly for goalies under NFHL scoring,
+where goals allowed carry negative fantasy value. Canonical player-strength
+assembly rejects non-finite values but does not reject or clamp a legitimate
+negative fantasy projection.

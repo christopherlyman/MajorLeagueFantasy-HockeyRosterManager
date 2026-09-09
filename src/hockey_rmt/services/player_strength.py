@@ -35,6 +35,25 @@ class PlayerStrengthError(RuntimeError):
     """Canonical player-strength join failed."""
 
 
+def _finite_number(
+    *,
+    value: float,
+    label: str,
+) -> float:
+    numeric = float(
+        value
+    )
+
+    if not math.isfinite(
+        numeric
+    ):
+        raise PlayerStrengthError(
+            f"{label} must be finite."
+        )
+
+    return numeric
+
+
 def _finite_nonnegative(
     *,
     value: float,
@@ -293,7 +312,7 @@ def build_player_strength_projections(
             row.projected_fantasy_points_per_game
             is not None
         ):
-            _finite_nonnegative(
+            _finite_number(
                 value=(
                     row
                     .projected_fantasy_points_per_game
