@@ -974,3 +974,29 @@ Negative projected FPPG is valid, particularly for goalies under NFHL scoring,
 where goals allowed carry negative fantasy value. Canonical player-strength
 assembly rejects non-finite values but does not reject or clamp a legitimate
 negative fantasy projection.
+
+### Preseason Canonical Strength Assembly
+
+`services/preseason_strength.py` is the permanent Phase-3 to Phase-4 handoff
+for preseason player strength. It does not perform Yahoo, NHL, MoneyPuck, or
+Daily Faceoff retrieval. Provider orchestration remains outside the projection
+model and supplies already-normalized inputs.
+
+For the projection season, the assembler:
+- builds the three-season historical skater baseline;
+- fits the established-skater age/bias calibration against the immediately
+  completed season using its own preceding three-season baseline;
+- applies that calibration to current established skaters;
+- fits the existing rookie age/draft-capital model from explicitly defined
+  training seasons and projects current players with no NHL regular-season
+  history;
+- applies the existing long-absence population prior to current skaters with
+  prior NHL history but no recent baseline;
+- builds goalie quality from the three-season historical goalie baseline and
+  delegates workload handling to the existing goalie projection service;
+- hands the mutually exclusive projection families to
+  `build_player_strength_projections()` for exact Yahoo-player coverage and
+  canonical source precedence.
+
+The assembler does not duplicate historical fantasy scoring, provider
+retrieval, daily context, or lineup logic. Those remain separate layers.
