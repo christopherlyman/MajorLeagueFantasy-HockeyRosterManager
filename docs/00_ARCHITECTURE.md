@@ -1000,3 +1000,36 @@ For the projection season, the assembler:
 
 The assembler does not duplicate historical fantasy scoring, provider
 retrieval, daily context, or lineup logic. Those remain separate layers.
+
+## Yahoo Market Metadata in Three-Day Snapshot
+
+Yahoo is authoritative for fantasy ownership, availability, player eligibility,
+and the managed fantasy-team boundary. These facts are roster-management and
+presentation context; they do not alter canonical player-strength or daily
+expected-points calculations.
+
+The three-day runtime snapshot may be enriched after ranking with one complete
+additive market-metadata group on every player row:
+
+- `eligible_positions` — Yahoo fantasy-position eligibility in Yahoo order;
+- `market_state` — canonical fantasy market state from `PlayerMarketState`;
+- `is_on_managed_team` — whether ownership belongs to the fantasy team managed
+  by the current user.
+
+The additive group is backward-compatible with earlier schema-version-1
+snapshots. A snapshot contains either all three market fields for every player
+row or none of them. Partial or mixed market coverage is invalid.
+
+Predraft Yahoo state is valid. If Yahoo reports empty team rosters and every
+player as a free agent, the Roster Manager preserves that state rather than
+inventing roster ownership from the DraftBoard or another source. Once Yahoo
+publishes roster ownership, the same contract supports My Roster, Free Agents,
+Waivers, and Other Teams without changing projection logic.
+
+The Streamlit decision table exposes Yahoo `Eligible Pos.` and a Market filter
+when market metadata is present. Three-day rank remains the default decision
+sort. Yahoo percent-rostered is not inferred or fabricated; it requires a
+separate authoritative provider field before display.
+
+Runtime ranking snapshots remain generated presentation artifacts and are not
+committed to source control.

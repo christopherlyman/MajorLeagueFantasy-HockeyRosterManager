@@ -115,6 +115,63 @@ def _team(
     return "—"
 
 
+
+def _eligible_positions(
+    row: dict,
+) -> str:
+    positions = row.get(
+        "eligible_positions"
+    )
+
+    if not isinstance(
+        positions,
+        (list, tuple),
+    ):
+        return "—"
+
+    cleaned = [
+        str(position).strip()
+        for position in positions
+        if str(position).strip()
+    ]
+
+    if not cleaned:
+        return "—"
+
+    return ", ".join(
+        cleaned
+    )
+
+
+def _market_bucket(
+    row: dict,
+) -> str:
+    if (
+        row.get(
+            "is_on_managed_team"
+        )
+        is True
+    ):
+        return "My Roster"
+
+    state = str(
+        row.get(
+            "market_state"
+        )
+        or ""
+    ).strip().casefold()
+
+    if state == "free_agent":
+        return "Free Agents"
+
+    if state == "waivers":
+        return "Waivers"
+
+    if state:
+        return "Other Teams"
+
+    return "Unknown"
+
 def _daily_rank(
     day: dict,
 ):
@@ -462,9 +519,31 @@ for index, (
     )
 
 
+market_buckets = {
+    _market_bucket(row)
+    for row in rows
+}
+
+market_options = [
+    "All"
+]
+
+for market_label in (
+    "My Roster",
+    "Free Agents",
+    "Waivers",
+    "Other Teams",
+):
+    if market_label in market_buckets:
+        market_options.append(
+            market_label
+        )
+
+
 filters = st.columns(
     (
         2,
+        1,
         1,
         1,
     )
@@ -494,6 +573,15 @@ with filters[1]:
 
 
 with filters[2]:
+    market_filter = st.selectbox(
+        "Market",
+        tuple(
+            market_options
+        ),
+    )
+
+
+with filters[3]:
     sort_by = st.selectbox(
         "Sort by",
         (
@@ -552,6 +640,17 @@ elif (
     ]
 
 
+if market_filter != "All":
+    filtered = [
+        row
+        for row in filtered
+        if (
+            _market_bucket(row)
+            == market_filter
+        )
+    ]
+
+
 filtered = sorted(
     filtered,
     key=lambda row: (
@@ -586,6 +685,11 @@ table_rows = [
         ),
         "Team": (
             _team(
+                row
+            )
+        ),
+        "Eligible Pos.": (
+            _eligible_positions(
                 row
             )
         ),
@@ -634,6 +738,7 @@ st.dataframe(
         "Player",
         "Type",
         "Team",
+        "Eligible Pos.",
         "Today",
         "Tmr",
         "D+2",

@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 
 from pathlib import Path
 from typing import Any
+
+from hockey_rmt.domain.market import (
+    PlayerMarketState,
+)
+from hockey_rmt.domain.player import Player
 
 from hockey_rmt.domain.three_day_ranking import (
     RankedDayValue,
@@ -58,6 +64,195 @@ def _day_payload(
         "start_time_utc": (row.start_time_utc.isoformat() if row.start_time_utc is not None else None),
     }
 
+
+
+def enrich_three_day_snapshot_market(
+    payload: dict[
+        str,
+        Any,
+    ],
+    *,
+    players: tuple[
+        Player,
+        ...,
+    ],
+    market_states: tuple[
+        PlayerMarketState,
+        ...,
+    ],
+    managed_team_key: str,
+) -> dict[
+    str,
+    Any,
+]:
+    team_key = managed_team_key.strip()
+
+    if not team_key:
+        raise ThreeDaySnapshotError(
+            "managed_team_key must not be blank."
+        )
+
+    rows = payload.get(
+        "rows"
+    )
+
+    if not isinstance(
+        rows,
+        list,
+    ):
+        raise ThreeDaySnapshotError(
+            "Snapshot rows must be a list "
+            "before market enrichment."
+        )
+
+    row_keys = [
+        str(
+            row.get(
+                "provider_player_key",
+                "",
+            )
+        )
+        for row in rows
+    ]
+
+    if any(
+        not key
+        for key in row_keys
+    ):
+        raise ThreeDaySnapshotError(
+            "Snapshot contains blank "
+            "provider player keys."
+        )
+
+    if len(row_keys) != len(
+        set(row_keys)
+    ):
+        raise ThreeDaySnapshotError(
+            "Snapshot contains duplicate "
+            "provider player keys."
+        )
+
+    player_by_key = {
+        player.provider_player_key: player
+        for player in players
+    }
+
+    market_by_key = {
+        state.provider_player_key: state
+        for state in market_states
+    }
+
+    if len(player_by_key) != len(
+        players
+    ):
+        raise ThreeDaySnapshotError(
+            "Player metadata contains duplicate "
+            "provider player keys."
+        )
+
+    if len(market_by_key) != len(
+        market_states
+    ):
+        raise ThreeDaySnapshotError(
+            "Market metadata contains duplicate "
+            "provider player keys."
+        )
+
+    expected = set(
+        row_keys
+    )
+
+    if set(player_by_key) != expected:
+        raise ThreeDaySnapshotError(
+            "Player metadata universe does not "
+            "match snapshot rows."
+        )
+
+    if set(market_by_key) != expected:
+        raise ThreeDaySnapshotError(
+            "Market metadata universe does not "
+            "match snapshot rows."
+        )
+
+    enriched = copy.deepcopy(
+        payload
+    )
+
+    for row in enriched[
+        "rows"
+    ]:
+        key = str(
+            row[
+                "provider_player_key"
+            ]
+        )
+
+        player = player_by_key[
+            key
+        ]
+
+        market = market_by_key[
+            key
+        ]
+
+        positions = [
+            str(position).strip()
+            for position
+            in player.eligible_positions
+            if str(position).strip()
+        ]
+
+        if len(positions) != len(
+            set(positions)
+        ):
+            raise ThreeDaySnapshotError(
+                "Yahoo eligibility contains "
+                f"duplicates for {key!r}."
+            )
+
+        market_state = str(
+            market.market_state
+            or ""
+        ).strip()
+
+        if not market_state:
+            raise ThreeDaySnapshotError(
+                "Market state must not be blank "
+                f"for {key!r}."
+            )
+
+        on_managed_team = (
+            market.owner_team_key
+            == team_key
+        )
+
+        if (
+            on_managed_team
+            and market_state
+            in {
+                "free_agent",
+                "waivers",
+            }
+        ):
+            raise ThreeDaySnapshotError(
+                "Managed-team player cannot "
+                "also be available on market: "
+                f"{key!r}."
+            )
+
+        row[
+            "eligible_positions"
+        ] = positions
+
+        row[
+            "market_state"
+        ] = market_state
+
+        row[
+            "is_on_managed_team"
+        ] = on_managed_team
+
+    return enriched
 
 def build_three_day_snapshot_payload(
     *,
@@ -339,7 +534,14 @@ def load_three_day_snapshot(
         "home_away",
     )
 
+    optional_market_fields = (
+        "eligible_positions",
+        "market_state",
+        "is_on_managed_team",
+    )
+
     seen_keys = set()
+    market_metadata_mode = None
 
     for row in rows:
         if not isinstance(
@@ -356,6 +558,102 @@ def load_three_day_snapshot(
                 raise ThreeDaySnapshotError(
                     "Snapshot player row "
                     f"missing {field!r}."
+                )
+
+        market_presence = tuple(
+            field in row
+            for field in optional_market_fields
+        )
+
+        if (
+            any(market_presence)
+            and not all(market_presence)
+        ):
+            raise ThreeDaySnapshotError(
+                "Snapshot player row contains "
+                "partial market metadata."
+            )
+
+        row_has_market = all(
+            market_presence
+        )
+
+        if market_metadata_mode is None:
+            market_metadata_mode = (
+                row_has_market
+            )
+
+        elif (
+            row_has_market
+            != market_metadata_mode
+        ):
+            raise ThreeDaySnapshotError(
+                "Snapshot rows contain mixed "
+                "market metadata coverage."
+            )
+
+        if row_has_market:
+            positions = row[
+                "eligible_positions"
+            ]
+
+            if not isinstance(
+                positions,
+                list,
+            ):
+                raise ThreeDaySnapshotError(
+                    "eligible_positions must "
+                    "be a list."
+                )
+
+            if any(
+                (
+                    not isinstance(
+                        position,
+                        str,
+                    )
+                    or not position.strip()
+                )
+                for position in positions
+            ):
+                raise ThreeDaySnapshotError(
+                    "eligible_positions must "
+                    "contain nonblank strings."
+                )
+
+            if len(positions) != len(
+                set(positions)
+            ):
+                raise ThreeDaySnapshotError(
+                    "eligible_positions must "
+                    "not contain duplicates."
+                )
+
+            market_state = row[
+                "market_state"
+            ]
+
+            if (
+                not isinstance(
+                    market_state,
+                    str,
+                )
+                or not market_state.strip()
+            ):
+                raise ThreeDaySnapshotError(
+                    "market_state must be "
+                    "a nonblank string."
+                )
+
+            if not isinstance(
+                row[
+                    "is_on_managed_team"
+                ],
+                bool,
+            ):
+                raise ThreeDaySnapshotError(
+                    "is_on_managed_team must "
+                    "be boolean."
                 )
 
         key = str(
