@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Mapping
 import json
 import os
 
@@ -251,6 +252,122 @@ def enrich_three_day_snapshot_market(
         row[
             "is_on_managed_team"
         ] = on_managed_team
+
+    return enriched
+
+
+def enrich_three_day_snapshot_percent_rostered(
+    payload: dict[
+        str,
+        Any,
+    ],
+    *,
+    percent_rostered_by_player_key: Mapping[
+        str,
+        int,
+    ],
+) -> dict[
+    str,
+    Any,
+]:
+    rows = payload.get(
+        "rows"
+    )
+
+    if not isinstance(
+        rows,
+        list,
+    ):
+        raise ThreeDaySnapshotError(
+            "Snapshot rows must be a list "
+            "before percent-rostered enrichment."
+        )
+
+    row_keys = [
+        str(
+            row.get(
+                "provider_player_key",
+                "",
+            )
+        )
+        for row in rows
+    ]
+
+    if any(
+        not key
+        for key in row_keys
+    ):
+        raise ThreeDaySnapshotError(
+            "Snapshot contains blank "
+            "provider player keys."
+        )
+
+    if len(row_keys) != len(
+        set(
+            row_keys
+        )
+    ):
+        raise ThreeDaySnapshotError(
+            "Snapshot contains duplicate "
+            "provider player keys."
+        )
+
+    percent_keys = {
+        str(
+            key
+        )
+        for key
+        in percent_rostered_by_player_key
+    }
+
+    if percent_keys != set(
+        row_keys
+    ):
+        raise ThreeDaySnapshotError(
+            "Percent-rostered universe does not "
+            "match snapshot rows."
+        )
+
+    enriched = copy.deepcopy(
+        payload
+    )
+
+    for row in enriched[
+        "rows"
+    ]:
+        key = str(
+            row[
+                "provider_player_key"
+            ]
+        )
+
+        value = (
+            percent_rostered_by_player_key[
+                key
+            ]
+        )
+
+        if (
+            isinstance(
+                value,
+                bool,
+            )
+            or not isinstance(
+                value,
+                int,
+            )
+            or value < 0
+            or value > 100
+        ):
+            raise ThreeDaySnapshotError(
+                "percent_rostered must be an "
+                "integer from 0 through 100 "
+                f"for {key!r}."
+            )
+
+        row[
+            "percent_rostered"
+        ] = value
 
     return enriched
 
@@ -542,6 +659,7 @@ def load_three_day_snapshot(
 
     seen_keys = set()
     market_metadata_mode = None
+    percent_rostered_mode = None
 
     for row in rows:
         if not isinstance(
@@ -654,6 +772,47 @@ def load_three_day_snapshot(
                 raise ThreeDaySnapshotError(
                     "is_on_managed_team must "
                     "be boolean."
+                )
+
+        has_percent_rostered = (
+            "percent_rostered"
+            in row
+        )
+
+        if percent_rostered_mode is None:
+            percent_rostered_mode = (
+                has_percent_rostered
+            )
+
+        elif (
+            has_percent_rostered
+            != percent_rostered_mode
+        ):
+            raise ThreeDaySnapshotError(
+                "Snapshot rows contain mixed "
+                "percent_rostered coverage."
+            )
+
+        if has_percent_rostered:
+            percent_rostered = row[
+                "percent_rostered"
+            ]
+
+            if (
+                isinstance(
+                    percent_rostered,
+                    bool,
+                )
+                or not isinstance(
+                    percent_rostered,
+                    int,
+                )
+                or percent_rostered < 0
+                or percent_rostered > 100
+            ):
+                raise ThreeDaySnapshotError(
+                    "percent_rostered must be "
+                    "an integer from 0 through 100."
                 )
 
         key = str(

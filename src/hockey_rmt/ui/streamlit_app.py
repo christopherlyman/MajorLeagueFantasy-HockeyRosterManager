@@ -143,6 +143,30 @@ def _eligible_positions(
     )
 
 
+
+def _percent_rostered(
+    row: dict,
+) -> str:
+    value = row.get(
+        "percent_rostered"
+    )
+
+    if (
+        isinstance(
+            value,
+            bool,
+        )
+        or not isinstance(
+            value,
+            int,
+        )
+        or value < 0
+        or value > 100
+    ):
+        return "—"
+
+    return f"{value}%"
+
 def _market_bucket(
     row: dict,
 ) -> str:
@@ -693,6 +717,11 @@ table_rows = [
                 row
             )
         ),
+        "% Ros": (
+            _percent_rostered(
+                row
+            )
+        ),
         "Today": (
             _day_cell(
                 row.get(
@@ -739,6 +768,7 @@ st.dataframe(
         "Type",
         "Team",
         "Eligible Pos.",
+        "% Ros",
         "Today",
         "Tmr",
         "D+2",

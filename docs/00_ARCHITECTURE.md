@@ -1033,3 +1033,27 @@ separate authoritative provider field before display.
 
 Runtime ranking snapshots remain generated presentation artifacts and are not
 committed to source control.
+
+### Yahoo Percent Rostered
+
+Yahoo `percent_owned` is the authoritative source for `% Ros` in the NFHL
+decision view. The resource is league-scoped and supplies weekly integer
+percentages from 0 through 100.
+
+Yahoo omits `percent_owned.value` for the zero-percent population. This
+behavior was validated across the complete Yahoo player pool and independently
+through both the league-player and single-player `percent_owned` resources.
+The canonical provider therefore maps an omitted week-level `value` to `0`;
+explicit values are validated as integers from 0 through 100.
+
+`percent_rostered` is market/presentation context only. It does not alter
+player-strength projections, expected fantasy points, ranks, ownership state,
+or roster optimization logic.
+
+The three-day snapshot carries `percent_rostered` as an independently optional
+additive schema-v1 field. If present on one player row it must be present on
+every player row and must be an integer from 0 through 100. Older snapshots
+without this field remain valid.
+
+Streamlit displays the field as `% Ros`. Missing snapshot metadata is rendered
+as an em dash rather than inferred.

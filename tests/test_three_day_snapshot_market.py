@@ -224,5 +224,122 @@ class MarketSnapshotTests(
             )
 
 
+
+
+class PercentRosteredSnapshotTests(
+    unittest.TestCase
+):
+    def test_percent_rostered_enrichment(
+        self,
+    ):
+        from hockey_rmt.ui.three_day_snapshot import (
+            enrich_three_day_snapshot_percent_rostered,
+        )
+
+        original = _payload()
+
+        enriched = (
+            enrich_three_day_snapshot_percent_rostered(
+                original,
+                percent_rostered_by_player_key={
+                    "477.p.1": 98,
+                },
+            )
+        )
+
+        self.assertEqual(
+            enriched[
+                "rows"
+            ][0][
+                "percent_rostered"
+            ],
+            98,
+        )
+
+        self.assertNotIn(
+            "percent_rostered",
+            original[
+                "rows"
+            ][0],
+        )
+
+
+    def test_percent_rostered_zero_round_trip(
+        self,
+    ):
+        from hockey_rmt.ui.three_day_snapshot import (
+            enrich_three_day_snapshot_percent_rostered,
+        )
+
+        enriched = (
+            enrich_three_day_snapshot_percent_rostered(
+                _payload(),
+                percent_rostered_by_player_key={
+                    "477.p.1": 0,
+                },
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = (
+                Path(tmp)
+                / "snapshot.json"
+            )
+
+            path.write_text(
+                json.dumps(enriched),
+                encoding="utf-8",
+            )
+
+            loaded = (
+                load_three_day_snapshot(
+                    path
+                )
+            )
+
+        self.assertEqual(
+            loaded[
+                "rows"
+            ][0][
+                "percent_rostered"
+            ],
+            0,
+        )
+
+
+    def test_percent_rostered_bad_range_rejected(
+        self,
+    ):
+        from hockey_rmt.ui.three_day_snapshot import (
+            enrich_three_day_snapshot_percent_rostered,
+        )
+
+        with self.assertRaises(
+            ThreeDaySnapshotError
+        ):
+            enrich_three_day_snapshot_percent_rostered(
+                _payload(),
+                percent_rostered_by_player_key={
+                    "477.p.1": 101,
+                },
+            )
+
+
+    def test_percent_rostered_universe_mismatch_rejected(
+        self,
+    ):
+        from hockey_rmt.ui.three_day_snapshot import (
+            enrich_three_day_snapshot_percent_rostered,
+        )
+
+        with self.assertRaises(
+            ThreeDaySnapshotError
+        ):
+            enrich_three_day_snapshot_percent_rostered(
+                _payload(),
+                percent_rostered_by_player_key={},
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
