@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from hockey_rmt.domain.projection_adjustment import (
+    PlayerProjectionAdjustment,
+)
+
 from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
 from typing import Any
@@ -61,6 +65,9 @@ def build_three_day_refresh_payload(
     league_name: str,
     team_name: str,
     model_label: str,
+    projection_adjustments: Sequence[
+        PlayerProjectionAdjustment
+    ] = (),
 ) -> dict[
     str,
     Any,
@@ -186,6 +193,9 @@ def build_three_day_refresh_payload(
                 ),
                 game_date=(
                     game_date
+                ),
+                projection_adjustments=(
+                    projection_adjustments
                 ),
             )
         )

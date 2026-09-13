@@ -1156,3 +1156,90 @@ The permanent refresh entrypoint is:
 Before the regular season starts, the default base date is the NFHL opening
 date. During the season it is the current America/New_York calendar date.
 `--base-date YYYY-MM-DD` provides a deterministic override.
+
+## Bounded Current-State Projection Adjustment
+
+Current-state evidence modifies the canonical season-long player strength only
+at daily valuation time. It never overwrites or mutates the canonical
+player-strength artifact.
+
+For skaters, the adjustment combines four independent signals:
+
+1. Daily Faceoff current deployment;
+2. MoneyPuck role trend;
+3. MoneyPuck underlying-process trend;
+4. official current-season NFHL fantasy production.
+
+Daily Faceoff is the fastest-moving role signal. Its bounded opportunity
+effects are:
+
+- EV `f1`: +1.5%;
+- EV `f2`: +0.5%;
+- EV `f3`: -0.5%;
+- EV `f4`: -1.5%;
+- EV `d1`: +1.0%;
+- EV `d2`: 0%;
+- EV `d3`: -1.0%;
+- PP `pp1`: +2.5%;
+- PP `pp2`: +0.5%;
+- a player with an EV assignment but no PP assignment: -1.0%.
+
+The combined Daily Faceoff deployment effect is capped from -3% to +4%.
+Unknown or future deployment group identifiers are retained as evidence but
+produce no numerical adjustment until explicitly supported.
+
+MoneyPuck interpreted role contributes +3% for `expanding` and -3% for
+`shrinking`. `stable`, `mixed`, and `insufficient_sample` are neutral.
+
+MoneyPuck process contributes +1.5% for `improving` and -1.5% for
+`declining`. `stable`, `mixed`, and `insufficient_sample` are neutral.
+Finishing state never independently raises or lowers the projection.
+
+Current-season fantasy production is progressively blended only for skaters
+with a positive canonical baseline. Its maximum weight is 30%, reached at
+60 games. The current/baseline FPPG ratio is clipped to 0.75 through 1.25
+before blending. When production is above baseline while finishing is `hot`,
+or below baseline while finishing is `cold`, the production weight is halved
+to reduce reaction to likely finishing variance.
+
+All component factors are combined multiplicatively and the final current-state
+factor is hard-capped to 0.88 through 1.12. Thus role, process, and recent
+production together can move canonical skater FPPG by no more than 12% before
+future matchup adjustments.
+
+Goalies are not adjusted by this skater layer. Their current-form model remains
+a separate goalie-specific concern.
+
+The adjustment output preserves each component factor and interpreted state so
+future WHY/explainability surfaces can show how the final daily value was
+derived.
+
+### Daily-Value Adjustment Seam
+
+Daily valuation preserves both the canonical season-strength baseline and the
+bounded current-state adjusted FPPG.
+
+When a complete projection-adjustment set is supplied, a scheduled and
+available player uses `adjusted_fantasy_points_per_game` as the pre-matchup
+daily expected value. The canonical baseline remains separately retained for
+audit and explanation.
+
+When projection adjustments are omitted, daily valuation remains exactly
+backward-compatible with the existing season-strength baseline.
+
+Schedule and availability retain precedence:
+
+- unknown schedule remains unknown;
+- an off day remains zero;
+- a hard-unavailable scheduled player remains zero;
+- unavailable canonical strength remains unavailable;
+- an adjustment cannot make an otherwise unavailable player playable.
+
+A supplied adjustment set must exactly match the canonical player-strength
+provider-key universe. Season, canonical player type, NHL identity, and
+canonical baseline FPPG must agree before any adjusted value may be used.
+
+The permanent three-day refresh accepts adjustment rows as an optional
+dependency. Provider orchestration remains separate: until the refresh CLI
+constructs and supplies current-state evidence, production output remains on
+the canonical baseline path.

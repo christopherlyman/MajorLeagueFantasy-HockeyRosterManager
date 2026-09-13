@@ -50,6 +50,14 @@ class DailyExpectedValue:
 
     expected_fantasy_points: float | None
 
+    adjustment_state: str | None = None
+
+    adjusted_fantasy_points_per_game: (
+        float | None
+    ) = None
+
+    adjustment_factor: float | None = None
+
     provider_game_id: str | None = None
     opponent_team_abbr: str | None = None
     home_away: str | None = None

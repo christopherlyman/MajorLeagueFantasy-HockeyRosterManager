@@ -142,18 +142,24 @@ def build_current_season_production(
             player.provider_player_key
         )
 
-        player_type = str(
+        canonical_player_type = str(
             player.player_type
+        ).strip()
+
+        player_type = {
+            "P": "skater",
+            "G": "goalie",
+            "skater": "skater",
+            "goalie": "goalie",
+        }.get(
+            canonical_player_type
         )
 
-        if player_type not in {
-            "skater",
-            "goalie",
-        }:
+        if player_type is None:
             raise CurrentProductionError(
                 "Unsupported player type for "
                 f"{provider_key!r}: "
-                f"{player_type!r}."
+                f"{canonical_player_type!r}."
             )
 
         if player.nhl_player_id is None:
