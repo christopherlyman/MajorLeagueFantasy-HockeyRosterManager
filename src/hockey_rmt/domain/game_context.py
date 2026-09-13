@@ -17,6 +17,10 @@ class PlayerGameContext:
     home_away: str | None = None
     start_time_utc: datetime | None = None
 
+    availability_state: str = "available"
+    provider_status: str | None = None
+    provider_status_full: str | None = None
+
 
 @dataclass(frozen=True)
 class PlayerScheduleWindow:

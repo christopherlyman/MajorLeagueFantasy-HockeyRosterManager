@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from hockey_rmt.domain.player_availability import (
+    classify_player_availability,
+)
+
 from collections.abc import Sequence
 from datetime import date, timedelta
 
@@ -107,6 +111,16 @@ def _scheduled_context(
         start_time_utc=(
             game.start_time_utc
         ),
+        availability_state=(
+            classify_player_availability(
+                provider=player.provider,
+                status=player.status,
+            )
+        ),
+        provider_status=player.status,
+        provider_status_full=(
+            player.status_full
+        ),
     )
 
 
@@ -157,6 +171,16 @@ def build_player_game_context(
             game_date=game_date,
             nhl_team_abbr=None,
             schedule_state="unknown_team",
+            availability_state=(
+                classify_player_availability(
+                    provider=player.provider,
+                    status=player.status,
+                )
+            ),
+            provider_status=player.status,
+            provider_status_full=(
+                player.status_full
+            ),
         )
 
     index = _game_index(games)
@@ -176,6 +200,16 @@ def build_player_game_context(
             game_date=game_date,
             nhl_team_abbr=team,
             schedule_state="off",
+            availability_state=(
+                classify_player_availability(
+                    provider=player.provider,
+                    status=player.status,
+                )
+            ),
+            provider_status=player.status,
+            provider_status_full=(
+                player.status_full
+            ),
         )
 
     return _scheduled_context(

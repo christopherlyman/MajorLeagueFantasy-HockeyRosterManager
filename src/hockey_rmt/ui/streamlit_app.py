@@ -144,6 +144,26 @@ def _eligible_positions(
 
 
 
+def _status(
+    row: dict,
+) -> str:
+    value = row.get(
+        "provider_status"
+    )
+
+    if value is None:
+        return "—"
+
+    cleaned = str(
+        value
+    ).strip()
+
+    if not cleaned:
+        return "—"
+
+    return cleaned
+
+
 def _percent_rostered(
     row: dict,
 ) -> str:
@@ -717,6 +737,11 @@ table_rows = [
                 row
             )
         ),
+        "Status": (
+            _status(
+                row
+            )
+        ),
         "% Ros": (
             _percent_rostered(
                 row
@@ -768,6 +793,7 @@ st.dataframe(
         "Type",
         "Team",
         "Eligible Pos.",
+        "Status",
         "% Ros",
         "Today",
         "Tmr",

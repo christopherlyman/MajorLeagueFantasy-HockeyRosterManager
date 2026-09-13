@@ -22,6 +22,11 @@ DAILY_VALUE_SOURCE_SEASON_STRENGTH = (
 )
 
 
+DAILY_VALUE_PLAYER_UNAVAILABLE = (
+    "player_unavailable"
+)
+
+
 @dataclass(frozen=True)
 class DailyExpectedValue:
     provider_player_key: str
@@ -49,3 +54,7 @@ class DailyExpectedValue:
     opponent_team_abbr: str | None = None
     home_away: str | None = None
     start_time_utc: datetime | None = None
+
+    availability_state: str = "available"
+    provider_status: str | None = None
+    provider_status_full: str | None = None

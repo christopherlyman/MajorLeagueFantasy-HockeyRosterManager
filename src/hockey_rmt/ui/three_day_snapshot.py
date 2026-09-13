@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from hockey_rmt.domain.player_availability import (
+    classify_player_availability,
+)
+
 import copy
 from collections.abc import Mapping
 import json
@@ -65,6 +69,144 @@ def _day_payload(
         "start_time_utc": (row.start_time_utc.isoformat() if row.start_time_utc is not None else None),
     }
 
+
+
+def enrich_three_day_snapshot_availability(
+    payload: dict[
+        str,
+        Any,
+    ],
+    *,
+    players: tuple[
+        Player,
+        ...,
+    ],
+) -> dict[
+    str,
+    Any,
+]:
+    enriched = copy.deepcopy(
+        payload
+    )
+
+    rows = enriched.get(
+        "rows"
+    )
+
+    if not isinstance(
+        rows,
+        list,
+    ):
+        raise ThreeDaySnapshotError(
+            "Snapshot rows must be a list."
+        )
+
+    players_by_key = {}
+
+    for player in players:
+        key = str(
+            player.provider_player_key
+        ).strip()
+
+        if not key:
+            raise ThreeDaySnapshotError(
+                "Yahoo player key was blank."
+            )
+
+        if key in players_by_key:
+            raise ThreeDaySnapshotError(
+                "Duplicate Yahoo player key "
+                f"{key!r}."
+            )
+
+        players_by_key[
+            key
+        ] = player
+
+    snapshot_keys = []
+
+    for row in rows:
+        if not isinstance(
+            row,
+            dict,
+        ):
+            raise ThreeDaySnapshotError(
+                "Snapshot player row must "
+                "be an object."
+            )
+
+        key = str(
+            row.get(
+                "provider_player_key",
+                "",
+            )
+        ).strip()
+
+        if not key:
+            raise ThreeDaySnapshotError(
+                "Snapshot player row had no "
+                "provider player key."
+            )
+
+        snapshot_keys.append(
+            key
+        )
+
+    if (
+        len(
+            snapshot_keys
+        )
+        != len(
+            set(
+                snapshot_keys
+            )
+        )
+    ):
+        raise ThreeDaySnapshotError(
+            "Snapshot contained duplicate "
+            "provider player keys."
+        )
+
+    if (
+        set(
+            snapshot_keys
+        )
+        != set(
+            players_by_key
+        )
+    ):
+        raise ThreeDaySnapshotError(
+            "Yahoo player universe did not "
+            "exactly match snapshot universe."
+        )
+
+    for row in rows:
+        key = str(
+            row[
+                "provider_player_key"
+            ]
+        )
+
+        player = players_by_key[
+            key
+        ]
+
+        row[
+            "availability_state"
+        ] = classify_player_availability(
+            provider=player.provider,
+            status=player.status,
+        )
+
+        row[
+            "provider_status"
+        ] = player.status
+
+        row[
+            "provider_status_full"
+        ] = player.status_full
+
+    return enriched
 
 
 def enrich_three_day_snapshot_market(
@@ -657,8 +799,15 @@ def load_three_day_snapshot(
         "is_on_managed_team",
     )
 
+    optional_availability_fields = (
+        "availability_state",
+        "provider_status",
+        "provider_status_full",
+    )
+
     seen_keys = set()
     market_metadata_mode = None
+    availability_metadata_mode = None
     percent_rostered_mode = None
 
     for row in rows:
@@ -773,6 +922,78 @@ def load_three_day_snapshot(
                     "is_on_managed_team must "
                     "be boolean."
                 )
+
+        availability_presence = tuple(
+            field in row
+            for field in optional_availability_fields
+        )
+
+        if (
+            any(
+                availability_presence
+            )
+            and not all(
+                availability_presence
+            )
+        ):
+            raise ThreeDaySnapshotError(
+                "Snapshot player row contains "
+                "partial availability metadata."
+            )
+
+        row_has_availability = all(
+            availability_presence
+        )
+
+        if availability_metadata_mode is None:
+            availability_metadata_mode = (
+                row_has_availability
+            )
+
+        elif (
+            row_has_availability
+            != availability_metadata_mode
+        ):
+            raise ThreeDaySnapshotError(
+                "Snapshot rows contain mixed "
+                "availability metadata coverage."
+            )
+
+        if row_has_availability:
+            availability_state = row[
+                "availability_state"
+            ]
+
+            if availability_state not in {
+                "available",
+                "uncertain",
+                "unavailable",
+            }:
+                raise ThreeDaySnapshotError(
+                    "availability_state must be "
+                    "available, uncertain, or "
+                    "unavailable."
+                )
+
+            for status_field in (
+                "provider_status",
+                "provider_status_full",
+            ):
+                value = row[
+                    status_field
+                ]
+
+                if (
+                    value is not None
+                    and not isinstance(
+                        value,
+                        str,
+                    )
+                ):
+                    raise ThreeDaySnapshotError(
+                        f"{status_field} must be "
+                        "a string or null."
+                    )
 
         has_percent_rostered = (
             "percent_rostered"

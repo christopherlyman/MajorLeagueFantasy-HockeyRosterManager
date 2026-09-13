@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+from hockey_rmt.domain.daily_value import (
+    DAILY_VALUE_PLAYER_UNAVAILABLE,
+)
+from hockey_rmt.domain.player_availability import (
+    PLAYER_AVAILABILITY_UNAVAILABLE,
+    VALID_PLAYER_AVAILABILITY_STATES,
+)
+
 import math
 
 from collections.abc import Sequence
@@ -122,6 +130,17 @@ def build_baseline_daily_expected_values(
                 f"for {key!r}."
             )
 
+
+        if (
+            context.availability_state
+            not in VALID_PLAYER_AVAILABILITY_STATES
+        ):
+            raise DailyValueError(
+                "Unsupported player availability "
+                f"state {context.availability_state!r} "
+                f"for {key!r}."
+            )
+
         context_by_key[
             key
         ] = context
@@ -221,6 +240,22 @@ def build_baseline_daily_expected_values(
 
             expected_points = 0.0
 
+        elif (
+            context.availability_state
+            == PLAYER_AVAILABILITY_UNAVAILABLE
+        ):
+            value_state = (
+                DAILY_VALUE_PLAYER_UNAVAILABLE
+            )
+
+            baseline_source = (
+                DAILY_VALUE_SOURCE_SEASON_STRENGTH
+                if strength_available
+                else None
+            )
+
+            expected_points = 0.0
+
         elif not strength_available:
             value_state = (
                 DAILY_VALUE_STRENGTH_UNAVAILABLE
@@ -290,6 +325,15 @@ def build_baseline_daily_expected_values(
                     context.home_away
                 ),
                 start_time_utc=context.start_time_utc,
+                availability_state=(
+                    context.availability_state
+                ),
+                provider_status=(
+                    context.provider_status
+                ),
+                provider_status_full=(
+                    context.provider_status_full
+                ),
             )
         )
 

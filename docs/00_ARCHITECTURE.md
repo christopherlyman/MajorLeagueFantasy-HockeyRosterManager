@@ -1057,3 +1057,102 @@ without this field remain valid.
 
 Streamlit displays the field as `% Ros`. Missing snapshot metadata is rendered
 as an em dash rather than inferred.
+
+## Current Player Availability
+
+Yahoo player status is the current fantasy-provider signal for whether a
+player can reasonably be treated as playable. Provider status is canonicalized
+before daily expected value is ranked.
+
+Canonical availability states are:
+
+- `available` — Yahoo status is blank;
+- `uncertain` — Yahoo status is `DTD`, or a future nonblank status is not
+  explicitly classified;
+- `unavailable` — Yahoo status is `NA`, `O`, `IR`, `IR-LT`, or `IR-NR`.
+
+Unknown nonblank statuses fail safe to `uncertain`, not `unavailable`, so a new
+Yahoo status cannot silently zero a player's projection.
+
+Schedule state retains precedence. An off-day remains `off`, and an unresolved
+team remains schedule-unknown. For a scheduled player whose current canonical
+availability is `unavailable`, daily expected value uses
+`player_unavailable`, expected fantasy points are `0.0`, and the player is
+excluded from the daily rank because only `available` daily-value rows are
+ranked.
+
+An `uncertain` player remains projected and rankable. The status is retained
+through daily-value data so the presentation layer can flag the risk instead
+of pretending certainty.
+
+The current Yahoo status is applied to each game context generated from that
+player record until the next provider refresh. This is intentionally a
+current-state signal; it is not a forecast of the player's recovery date.
+
+## Canonical Player Strength Artifact
+
+The expensive preseason projection build produces the canonical
+`PlayerStrengthProjection` universe for one NHL projection season.
+
+That result is persisted as a season-scoped runtime artifact rather than
+recomputed during every daily refresh. For 2026-27 the canonical path is:
+
+`data/runtime/player_strengths_20262027.json`
+
+The artifact contains only canonical player-strength output: provider player
+identity, NHL player identity, projection season, player type, strength state,
+projection source/state, and projected fantasy points per game.
+
+The preseason-strength artifact is regenerated only when the underlying
+preseason model or its source inputs intentionally change. Normal daily
+refreshes load this artifact and combine it with fresh provider state,
+including Yahoo player/status data, market state, percent rostered, the
+official NHL schedule, and subsequent current-season adjustment layers.
+
+The artifact uses schema version 1. Loading is fail-closed: duplicate player
+keys, season mismatches, invalid field types, non-finite projected values, or
+unsupported schema versions are rejected. Signed finite projected fantasy
+points per game remain valid because some canonical goalie strengths may be
+negative.
+
+Writes are atomic.
+
+This separation keeps the historical/calibration model reproducible without
+making an ordinary daily refresh refetch and recalibrate the entire historical
+projection universe.
+
+## Permanent Three-Day Daily Refresh
+
+The ordinary NFHL three-day refresh loads the season-scoped canonical player
+strength artifact rather than rebuilding the expensive preseason model.
+
+The refresh combines:
+
+- canonical player strength;
+- current Yahoo player/status data;
+- current Yahoo market state and percent rostered;
+- current official NHL team and schedule data;
+- canonical player availability.
+
+It then builds availability-aware daily values, Today/Tomorrow/Day+2 ranks,
+the hidden three-day aggregate rank, and the Streamlit snapshot.
+
+Availability metadata is an additive schema-v1 row group:
+`availability_state`, `provider_status`, and `provider_status_full`.
+The group is all-or-none across snapshot rows. Legacy schema-v1 snapshots
+without this group remain valid.
+
+A scheduled hard-unavailable player receives `player_unavailable`, expected
+points `0.0`, and no daily rank. A `DTD` player remains projected/rankable
+while the provider status remains visible.
+
+The Streamlit decision table displays a compact `Status` column. Blank status
+displays as an em dash.
+
+The permanent refresh entrypoint is:
+
+`python -m hockey_rmt.refresh_three_day`
+
+Before the regular season starts, the default base date is the NFHL opening
+date. During the season it is the current America/New_York calendar date.
+`--base-date YYYY-MM-DD` provides a deterministic override.
