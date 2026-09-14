@@ -1243,3 +1243,55 @@ The permanent three-day refresh accepts adjustment rows as an optional
 dependency. Provider orchestration remains separate: until the refresh CLI
 constructs and supplies current-state evidence, production output remains on
 the canonical baseline path.
+
+## Permanent Current-State Evidence Orchestration
+
+The permanent three-day refresh assembles bounded current-state evidence before
+daily expected values are ranked.
+
+The skater evidence path is:
+
+1. canonical preseason/season player strength remains the immutable anchor;
+2. official NHL current-season skater statistics are scored under the actual
+   NFHL league definition and converted to `CurrentSeasonProduction`;
+3. MoneyPuck season, last-20, and last-10 observations are normalized and
+   interpreted into role, process, and finishing evidence;
+4. Daily Faceoff line-combination snapshots are resolved deterministically to
+   canonical NHL playerIds and provide current even-strength and power-play
+   deployment;
+5. the existing bounded projection-adjustment service combines those evidence
+   families;
+6. the resulting adjustment rows are supplied through the existing daily-value
+   seam before three-day ranking.
+
+Goalies remain neutral in this skater adjustment layer. Their current-state
+daily-start model remains separate.
+
+### Early-season and provider-failure behavior
+
+Current-season NHL production and MoneyPuck trends are not requested before the
+actual NHL regular-season start date. They therefore remain neutral preseason
+rather than manufacturing zero-performance observations.
+
+MoneyPuck is an optional current-form enrichment. The three required windows
+are atomic: if any season/last-20/last-10 download is unavailable, the refresh
+uses no MoneyPuck trend evidence for that run rather than interpreting a
+partial window set.
+
+Daily Faceoff is also a volatile enrichment. Deployment is fetched per current
+NHL team. A provider HTTP failure for one club leaves that club neutral for
+deployment adjustment while preserving successful clubs. A provider response
+whose canonical team abbreviation does not match the requested NHL club is a
+hard integrity failure.
+
+The Daily Faceoff NHL-abbreviation-to-team-slug vocabulary belongs inside the
+Daily Faceoff provider boundary and is validated against the live NHL team
+universe on every refresh. An unknown current NHL abbreviation fails loudly
+instead of guessing a URL.
+
+Missing evidence is neutral. It is never converted to zero production, zero
+usage, or a negative player signal.
+
+The model label identifies that bounded current-state skater adjustments are
+applied when evidence is available and that matchup adjustment remains a
+separate future layer.

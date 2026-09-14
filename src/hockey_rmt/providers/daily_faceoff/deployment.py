@@ -169,6 +169,70 @@ def _parse_timestamp(
     return result
 
 
+
+_NHL_ABBR_TO_DAILY_FACEOFF_SLUG = {
+    "ANA": "anaheim-ducks",
+    "BOS": "boston-bruins",
+    "BUF": "buffalo-sabres",
+    "CAR": "carolina-hurricanes",
+    "CBJ": "columbus-blue-jackets",
+    "CGY": "calgary-flames",
+    "CHI": "chicago-blackhawks",
+    "COL": "colorado-avalanche",
+    "DAL": "dallas-stars",
+    "DET": "detroit-red-wings",
+    "EDM": "edmonton-oilers",
+    "FLA": "florida-panthers",
+    "LAK": "los-angeles-kings",
+    "MIN": "minnesota-wild",
+    "MTL": "montreal-canadiens",
+    "NJD": "new-jersey-devils",
+    "NSH": "nashville-predators",
+    "NYI": "new-york-islanders",
+    "NYR": "new-york-rangers",
+    "OTT": "ottawa-senators",
+    "PHI": "philadelphia-flyers",
+    "PIT": "pittsburgh-penguins",
+    "SEA": "seattle-kraken",
+    "SJS": "san-jose-sharks",
+    "STL": "st-louis-blues",
+    "TBL": "tampa-bay-lightning",
+    "TOR": "toronto-maple-leafs",
+    "UTA": "utah-mammoth",
+    "VAN": "vancouver-canucks",
+    "VGK": "vegas-golden-knights",
+    "WPG": "winnipeg-jets",
+    "WSH": "washington-capitals",
+}
+
+
+def team_slug_for_nhl_abbr(
+    nhl_team_abbr: str,
+) -> str:
+    abbreviation = str(
+        nhl_team_abbr
+    ).strip().upper()
+
+    if not abbreviation:
+        raise DailyFaceoffDeploymentError(
+            "NHL team abbreviation was empty "
+            "for Daily Faceoff deployment."
+        )
+
+    try:
+        return (
+            _NHL_ABBR_TO_DAILY_FACEOFF_SLUG[
+                abbreviation
+            ]
+        )
+    except KeyError as exc:
+        raise DailyFaceoffDeploymentError(
+            "No Daily Faceoff team slug is "
+            "configured for current NHL team "
+            f"{abbreviation!r}."
+        ) from exc
+
+
 def deployment_url(
     team_slug: str,
 ) -> str:

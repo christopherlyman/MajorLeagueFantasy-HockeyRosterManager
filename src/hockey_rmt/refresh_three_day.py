@@ -7,7 +7,27 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from hockey_rmt.domain.performance_trend import (
+    WINDOW_LAST_10,
+    WINDOW_LAST_20,
+    WINDOW_SEASON,
+)
+from hockey_rmt.providers.daily_faceoff.deployment import (
+    DailyFaceoffDeploymentError,
+    fetch_team_deployment,
+    team_slug_for_nhl_abbr,
+)
+from hockey_rmt.providers.moneypuck.skater_trends import (
+    MoneyPuckSkaterTrendError,
+    fetch_skater_performance_trends,
+)
 from hockey_rmt.providers.nhl.client import NhlClient
+from hockey_rmt.providers.nhl.player_search import (
+    fetch_player_registry,
+)
+from hockey_rmt.providers.nhl.stats import (
+    fetch_skater_season_stats,
+)
 from hockey_rmt.providers.nhl.schedule import (
     fetch_schedule,
 )
@@ -32,8 +52,14 @@ from hockey_rmt.providers.yahoo.percent_rostered import (
 from hockey_rmt.providers.yahoo.player_pool import (
     fetch_all_players,
 )
+from hockey_rmt.services.current_state_evidence import (
+    build_current_state_projection_adjustments,
+)
 from hockey_rmt.services.daily_refresh import (
     build_three_day_refresh_payload,
+)
+from hockey_rmt.services.fantasy_value import (
+    score_historical_season,
 )
 from hockey_rmt.services.player_strength_snapshot import (
     load_player_strength_snapshot,
@@ -57,14 +83,17 @@ SEASON_START = date(
 )
 
 MODEL_LABEL = (
-    "CANONICAL 2026-27 PRESEASON — "
+    "CANONICAL 2026-27 — "
     "established-skater historical/age calibration; "
     "rookie age/draft-capital model; "
     "long-absence population prior; "
     "goalie historical quality/workload. "
-    "Yahoo availability applied; "
-    "current-role, recent-form, and matchup "
-    "adjustments are not yet applied."
+    "Yahoo availability applied. "
+    "Bounded skater current-state adjustments "
+    "use Daily Faceoff deployment, official NHL "
+    "current-season production, and MoneyPuck "
+    "role/process trends when available. "
+    "Matchup adjustment is not yet applied."
 )
 
 
@@ -159,6 +188,155 @@ def _schedule_union(
 
     return tuple(
         games_by_id.values()
+    )
+
+
+
+def _today_new_york() -> date:
+    return (
+        datetime.now(
+            ZoneInfo(
+                "America/New_York"
+            )
+        )
+        .date()
+    )
+
+
+def _fetch_current_season_values(
+    *,
+    league,
+    actual_date: date,
+):
+    if actual_date < SEASON_START:
+        return (
+            (),
+            "preseason_no_sample",
+            0,
+        )
+
+    skaters = fetch_skater_season_stats(
+        season_id=PROJECTION_SEASON_ID,
+    )
+
+    values = score_historical_season(
+        skaters=skaters,
+        goalies=(),
+        league=league,
+    )
+
+    return (
+        values,
+        "available",
+        len(skaters),
+    )
+
+
+def _fetch_current_moneypuck_trends(
+    *,
+    actual_date: date,
+):
+    if actual_date < SEASON_START:
+        return (
+            (),
+            "preseason_no_sample",
+        )
+
+    rows = []
+
+    for window in (
+        WINDOW_SEASON,
+        WINDOW_LAST_20,
+        WINDOW_LAST_10,
+    ):
+        try:
+            rows.extend(
+                fetch_skater_performance_trends(
+                    season_id=(
+                        PROJECTION_SEASON_ID
+                    ),
+                    window=window,
+                )
+            )
+        except MoneyPuckSkaterTrendError:
+            return (
+                (),
+                f"unavailable:{window}",
+            )
+
+    return (
+        tuple(rows),
+        "available",
+    )
+
+
+def _fetch_deployment_snapshots(
+    *,
+    nhl_teams,
+):
+    snapshots = []
+    failed_teams = []
+
+    abbreviations = [
+        str(
+            team.abbreviation
+        ).strip().upper()
+        for team in nhl_teams
+    ]
+
+    if any(
+        not abbreviation
+        for abbreviation in abbreviations
+    ):
+        raise RuntimeError(
+            "Current NHL team had an empty "
+            "abbreviation."
+        )
+
+    if len(abbreviations) != len(
+        set(abbreviations)
+    ):
+        raise RuntimeError(
+            "Current NHL team universe contained "
+            "duplicate abbreviations."
+        )
+
+    for abbreviation in sorted(
+        abbreviations
+    ):
+        slug = team_slug_for_nhl_abbr(
+            abbreviation
+        )
+
+        try:
+            snapshot = fetch_team_deployment(
+                slug
+            )
+        except DailyFaceoffDeploymentError:
+            failed_teams.append(
+                abbreviation
+            )
+            continue
+
+        source_team = str(
+            snapshot.team_abbreviation
+        ).strip().upper()
+
+        if source_team != abbreviation:
+            raise RuntimeError(
+                "Daily Faceoff deployment response "
+                "team did not match requested NHL "
+                f"team: requested={abbreviation!r}, "
+                f"returned={source_team!r}."
+            )
+
+        snapshots.append(
+            snapshot
+        )
+
+    return (
+        tuple(snapshots),
+        tuple(failed_teams),
     )
 
 
@@ -302,6 +480,60 @@ def main() -> int:
         ),
     )
 
+    actual_date = (
+        _today_new_york()
+    )
+
+    (
+        current_season_values,
+        current_production_source_state,
+        current_skater_stat_rows,
+    ) = _fetch_current_season_values(
+        league=league,
+        actual_date=actual_date,
+    )
+
+    (
+        performance_trends,
+        moneypuck_source_state,
+    ) = _fetch_current_moneypuck_trends(
+        actual_date=actual_date,
+    )
+
+    (
+        deployment_snapshots,
+        deployment_failed_teams,
+    ) = _fetch_deployment_snapshots(
+        nhl_teams=nhl_teams,
+    )
+
+    nhl_player_registry = (
+        fetch_player_registry()
+        if deployment_snapshots
+        else ()
+    )
+
+    projection_adjustments = (
+        build_current_state_projection_adjustments(
+            player_strengths=strengths,
+            projection_season_id=(
+                PROJECTION_SEASON_ID
+            ),
+            season_values=(
+                current_season_values
+            ),
+            performance_trends=(
+                performance_trends
+            ),
+            deployment_snapshots=(
+                deployment_snapshots
+            ),
+            nhl_players=(
+                nhl_player_registry
+            ),
+        )
+    )
+
     payload = (
         build_three_day_refresh_payload(
             players=players,
@@ -334,6 +566,9 @@ def main() -> int:
             model_label=(
                 MODEL_LABEL
             ),
+            projection_adjustments=(
+                projection_adjustments
+            ),
         )
     )
 
@@ -361,6 +596,51 @@ def main() -> int:
     )
     print(
         f"NHL_TEAMS={len(nhl_teams)}"
+    )
+    print(
+        f"ACTUAL_DATE={actual_date}"
+    )
+    print(
+        "CURRENT_PRODUCTION_SOURCE_STATE="
+        f"{current_production_source_state}"
+    )
+    print(
+        "CURRENT_SKATER_STAT_ROWS="
+        f"{current_skater_stat_rows}"
+    )
+    print(
+        "MONEYPUCK_SOURCE_STATE="
+        f"{moneypuck_source_state}"
+    )
+    print(
+        "MONEYPUCK_TREND_ROWS="
+        f"{len(performance_trends)}"
+    )
+    print(
+        "DFO_DEPLOYMENT_SNAPSHOTS="
+        f"{len(deployment_snapshots)}"
+    )
+    print(
+        "DFO_DEPLOYMENT_FAILED_TEAMS="
+        f"{len(deployment_failed_teams)}"
+    )
+    print(
+        "DFO_FAILED_TEAM_ABBRS="
+        + (
+            ",".join(
+                deployment_failed_teams
+            )
+            if deployment_failed_teams
+            else "NONE"
+        )
+    )
+    print(
+        "NHL_PLAYER_REGISTRY_ROWS="
+        f"{len(nhl_player_registry)}"
+    )
+    print(
+        "PROJECTION_ADJUSTMENT_ROWS="
+        f"{len(projection_adjustments)}"
     )
     print(
         f"SCHEDULE_UNION_GAMES={len(games)}"
