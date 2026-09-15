@@ -11,6 +11,10 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 
+from hockey_rmt.services.lineup_optimizer import (
+    LineupOptimizerError,
+    build_daily_lineup_decisions,
+)
 from hockey_rmt.ui.three_day_snapshot import (
     load_three_day_snapshot,
 )
@@ -445,6 +449,51 @@ def _sort_rank(
     )
 
 
+
+def _decision_reason_label(
+    reason: str,
+) -> str:
+    labels = {
+        "optimal_daily_lineup": (
+            "Best legal lineup"
+        ),
+        (
+            "optimal_daily_lineup_"
+            "availability_uncertain"
+        ): (
+            "Best legal lineup; "
+            "availability uncertain"
+        ),
+        "slot_congestion": (
+            "Better option fills available slot"
+        ),
+        "off_day": "No game",
+        "player_unavailable": (
+            "Unavailable"
+        ),
+        "schedule_unresolved": (
+            "Schedule unresolved"
+        ),
+        "no_positive_projection": (
+            "No usable positive projection"
+        ),
+        "goalie_start_model_pending": (
+            "Goalie start model pending"
+        ),
+        "no_same_day_action": (
+            "No same-day action"
+        ),
+    }
+
+    return labels.get(
+        reason,
+        reason.replace(
+            "_",
+            " ",
+        ).capitalize(),
+    )
+
+
 st.set_page_config(
     page_title="NFHL Roster Manager",
     page_icon="🏒",
@@ -509,6 +558,166 @@ rows = list(
         []
     )
 )
+
+
+st.subheader(
+    "Lineup Recommendations"
+)
+
+roster_positions = snapshot.get(
+    "roster_positions"
+)
+
+managed_rows = [
+    row
+    for row in rows
+    if (
+        row.get(
+            "is_on_managed_team"
+        )
+        is True
+    )
+]
+
+if (
+    not isinstance(
+        roster_positions,
+        list,
+    )
+    or not roster_positions
+):
+    st.caption(
+        "Lineup recommendations will activate "
+        "after the next live refresh writes "
+        "Yahoo roster-slot metadata."
+    )
+
+elif not managed_rows:
+    st.info(
+        "Yahoo has not populated Drop The Gloves "
+        "with a managed roster yet. "
+        "Lineup recommendations will activate "
+        "automatically when roster ownership "
+        "appears in the Yahoo feed."
+    )
+
+else:
+    recommendation_day = st.selectbox(
+        "Recommendation day",
+        (
+            "Today",
+            "Tomorrow",
+            "Day+2",
+        ),
+        key=(
+            "lineup_recommendation_day"
+        ),
+    )
+
+    day_key = {
+        "Today": "today",
+        "Tomorrow": "tomorrow",
+        "Day+2": "day_plus_2",
+    }[
+        recommendation_day
+    ]
+
+    try:
+        lineup_decisions = (
+            build_daily_lineup_decisions(
+                rows=rows,
+                roster_positions=(
+                    roster_positions
+                ),
+                day_key=day_key,
+            )
+        )
+
+    except LineupOptimizerError as exc:
+        st.error(
+            "Unable to build lineup "
+            f"recommendations: {exc}"
+        )
+
+    else:
+        source_by_key = {
+            str(
+                row.get(
+                    "provider_player_key",
+                    "",
+                )
+            ): row
+            for row in managed_rows
+        }
+
+        lineup_table = []
+
+        for decision in lineup_decisions:
+            source = source_by_key[
+                decision.provider_player_key
+            ]
+
+            lineup_table.append(
+                {
+                    "Player": (
+                        decision.full_name
+                    ),
+                    "Action": (
+                        decision.action
+                    ),
+                    "Slot": (
+                        decision.assigned_position
+                        or "—"
+                    ),
+                    "Eligible Pos.": (
+                        _eligible_positions(
+                            source
+                        )
+                    ),
+                    "Status": (
+                        _status(
+                            source
+                        )
+                    ),
+                    "Projected": (
+                        (
+                            f"{decision.expected_points:.2f}"
+                        )
+                        if (
+                            decision.expected_points
+                            is not None
+                        )
+                        else "—"
+                    ),
+                    "Why": (
+                        _decision_reason_label(
+                            decision.reason
+                        )
+                    ),
+                }
+            )
+
+        st.dataframe(
+            lineup_table,
+            hide_index=True,
+            use_container_width=True,
+            column_order=(
+                "Player",
+                "Action",
+                "Slot",
+                "Eligible Pos.",
+                "Status",
+                "Projected",
+                "Why",
+            ),
+        )
+
+        st.caption(
+            "START/BENCH currently optimizes "
+            "skaters only. Scheduled goalies "
+            "remain HOLD until the separate "
+            "goalie-start model is connected."
+        )
 
 
 metrics = st.columns(

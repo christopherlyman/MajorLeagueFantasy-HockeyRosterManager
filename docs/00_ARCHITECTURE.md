@@ -1295,3 +1295,56 @@ usage, or a negative player signal.
 The model label identifies that bounded current-state skater adjustments are
 applied when evidence is available and that matchup adjustment remains a
 separate future layer.
+
+## Daily Lineup Decision Engine
+
+The first decision-engine layer converts the live three-day player-value
+snapshot into deterministic daily lineup recommendations for the managed Yahoo
+team.
+
+The optimizer consumes Yahoo's real roster-position configuration rather than
+hard-coded NFHL slot counts. Starting positions are expanded from
+`LeagueDefinition.roster_positions`; bench and reserve positions remain
+non-starting because Yahoo marks them with `is_starting=False`.
+
+For each requested day (`today`, `tomorrow`, or `day_plus_2`) the optimizer:
+
+1. considers only players whose snapshot row is marked `is_on_managed_team`;
+2. respects each player's Yahoo `eligible_positions`;
+3. excludes hard-unavailable players from the starting solution;
+4. optimizes projected NFHL points globally across positional constraints,
+   rather than greedily filling positions one at a time;
+5. emits one deterministic action per managed-roster player:
+   `START`, `BENCH`, or `HOLD`;
+6. uses `START` when a playable skater belongs in the maximum-value legal
+   lineup;
+7. uses `BENCH` when a playable skater loses a starting slot because of roster
+   congestion;
+8. uses `HOLD` when the player has no game, is unavailable, lacks a usable
+   projection, or otherwise has no same-day lineup action.
+
+Multi-position players must be allocated globally so flexible players do not
+consume scarce slots that are required by single-position teammates.
+
+### Goalie boundary
+
+Goalies are intentionally not optimized by this first lineup layer. A
+scheduled goalie remains `HOLD` with an explicit `goalie_start_model_pending`
+reason until confirmed/projected starter evidence is wired into the separate
+goalie model. The application must not recommend a backup goalie merely because
+his NHL team plays that day.
+
+### Predraft / empty-roster behavior
+
+The decision engine never invents a managed roster. If Yahoo reports zero
+players on the managed team, the optimizer returns no player decisions and the
+UI explains that recommendations will activate automatically after Yahoo
+populates the roster.
+
+### Snapshot roster-position metadata
+
+The permanent refresh writes Yahoo's roster-position definition into the
+snapshot root as `roster_positions`. This metadata is configuration only; it
+does not alter player projections or market state. The UI remains backward
+compatible with an older snapshot that does not yet contain this optional
+metadata.

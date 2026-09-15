@@ -55,6 +55,9 @@ from hockey_rmt.providers.yahoo.player_pool import (
 from hockey_rmt.services.current_state_evidence import (
     build_current_state_projection_adjustments,
 )
+from hockey_rmt.services.lineup_optimizer import (
+    build_roster_position_snapshot,
+)
 from hockey_rmt.services.daily_refresh import (
     build_three_day_refresh_payload,
 )
@@ -570,6 +573,18 @@ def main() -> int:
                 projection_adjustments
             ),
         )
+    )
+
+    roster_position_payload = (
+        build_roster_position_snapshot(
+            league.roster_positions
+        )
+    )
+
+    payload[
+        "roster_positions"
+    ] = list(
+        roster_position_payload
     )
 
     written = (
