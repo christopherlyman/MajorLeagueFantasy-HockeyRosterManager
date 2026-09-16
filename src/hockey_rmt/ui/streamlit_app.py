@@ -212,7 +212,10 @@ def _market_bucket(
     if state == "free_agent":
         return "Free Agents"
 
-    if state == "waivers":
+    if state in {
+        "waiver",
+        "waivers",
+    }:
         return "Waivers"
 
     if state:
@@ -494,6 +497,36 @@ def _decision_reason_label(
     )
 
 
+
+def _market_reason_label(
+    reason: str,
+) -> str:
+    labels = {
+        (
+            "per_game_upgrade_and_"
+            "usable_lineup_gain"
+        ): (
+            "Per-game upgrade + "
+            "usable lineup gain"
+        ),
+        (
+            "near_term_schedule_or_"
+            "positional_fit_gain"
+        ): (
+            "Near-term schedule / "
+            "positional fit"
+        ),
+    }
+
+    return labels.get(
+        reason,
+        reason.replace(
+            "_",
+            " ",
+        ).capitalize(),
+    )
+
+
 st.set_page_config(
     page_title="NFHL Roster Manager",
     page_icon="🏒",
@@ -717,6 +750,183 @@ else:
             "skaters only. Scheduled goalies "
             "remain HOLD until the separate "
             "goalie-start model is connected."
+        )
+
+
+st.subheader(
+    "Market Recommendations"
+)
+
+transaction_context = snapshot.get(
+    "transaction_context"
+)
+
+market_recommendations = snapshot.get(
+    "market_recommendations"
+)
+
+if (
+    not isinstance(
+        transaction_context,
+        dict,
+    )
+    or not isinstance(
+        market_recommendations,
+        list,
+    )
+):
+    st.caption(
+        "Market recommendations will activate "
+        "after the next live refresh writes "
+        "Yahoo transaction metadata."
+    )
+
+else:
+    market_state = str(
+        transaction_context.get(
+            "state",
+            "",
+        )
+    )
+
+    if (
+        market_state
+        == "waiting_for_managed_roster"
+    ):
+        st.info(
+            "Yahoo has not populated "
+            "Drop The Gloves yet. "
+            "ADD / DROP / STREAM recommendations "
+            "will activate automatically once "
+            "the roster appears."
+        )
+
+    elif (
+        market_state
+        == "weekly_add_limit_reached"
+    ):
+        st.warning(
+            "Weekly add limit reached. "
+            "Transaction recommendation: HOLD."
+        )
+
+    elif (
+        market_state
+        == "weekly_add_usage_unknown"
+    ):
+        st.warning(
+            "Yahoo did not provide current weekly "
+            "add usage, so transaction advice is "
+            "being withheld."
+        )
+
+    elif market_recommendations:
+        market_table = []
+
+        for recommendation in (
+            market_recommendations
+        ):
+            rostered = recommendation.get(
+                "add_percent_rostered"
+            )
+
+            market_table.append(
+                {
+                    "Action": (
+                        recommendation.get(
+                            "action"
+                        )
+                    ),
+                    "Add": (
+                        recommendation.get(
+                            "add_player_name"
+                        )
+                    ),
+                    "Drop": (
+                        recommendation.get(
+                            "drop_player_name"
+                        )
+                    ),
+                    "3-Day Gain": (
+                        f"{float(recommendation.get('usable_three_day_gain', 0.0)):+.2f}"
+                    ),
+                    "Add 3D": (
+                        f"{float(recommendation.get('add_three_day_expected_points', 0.0)):.2f}"
+                    ),
+                    "Drop 3D": (
+                        f"{float(recommendation.get('drop_three_day_expected_points', 0.0)):.2f}"
+                    ),
+                    "% Ros": (
+                        (
+                            f"{int(rostered)}%"
+                        )
+                        if isinstance(
+                            rostered,
+                            int,
+                        )
+                        and not isinstance(
+                            rostered,
+                            bool,
+                        )
+                        else "—"
+                    ),
+                    "Why": (
+                        _market_reason_label(
+                            str(
+                                recommendation.get(
+                                    "reason",
+                                    "",
+                                )
+                            )
+                        )
+                    ),
+                }
+            )
+
+        st.dataframe(
+            market_table,
+            hide_index=True,
+            use_container_width=True,
+            column_order=(
+                "Action",
+                "Add",
+                "Drop",
+                "3-Day Gain",
+                "Add 3D",
+                "Drop 3D",
+                "% Ros",
+                "Why",
+            ),
+        )
+
+        remaining = (
+            transaction_context.get(
+                "weekly_adds_remaining"
+            )
+        )
+
+        skipped = (
+            transaction_context.get(
+                "waiver_candidates_skipped",
+                0,
+            )
+        )
+
+        st.caption(
+            "Recommendations optimize usable "
+            "three-day skater lineup value. "
+            f"Weekly adds remaining: "
+            f"{remaining if remaining is not None else 'unlimited/unknown'}"
+            f". Waiver skaters held out of "
+            f"immediate-add evaluation: {skipped}."
+        )
+
+    else:
+        st.info(
+            "Transaction recommendation: HOLD. "
+            "No immediately available skater "
+            "improves usable three-day lineup "
+            "value enough to clear the action floor."
         )
 
 

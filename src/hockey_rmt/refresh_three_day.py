@@ -55,6 +55,13 @@ from hockey_rmt.providers.yahoo.player_pool import (
 from hockey_rmt.services.current_state_evidence import (
     build_current_state_projection_adjustments,
 )
+from hockey_rmt.providers.yahoo.teams import (
+    fetch_league_teams,
+)
+from hockey_rmt.services.market_decision import (
+    build_market_decisions,
+    market_decision_result_payload,
+)
 from hockey_rmt.services.lineup_optimizer import (
     build_roster_position_snapshot,
 )
@@ -440,6 +447,38 @@ def main() -> int:
         )
     )
 
+    fantasy_teams = (
+        fetch_league_teams(
+            yahoo,
+            LEAGUE_KEY,
+        )
+    )
+
+    managed_team_matches = [
+        row
+        for row in fantasy_teams
+        if (
+            row.provider_team_key
+            == MANAGED_TEAM_KEY
+        )
+    ]
+
+    if len(
+        managed_team_matches
+    ) != 1:
+        raise RuntimeError(
+            "Expected exactly one managed "
+            "Yahoo fantasy team for "
+            f"{MANAGED_TEAM_KEY!r}; "
+            f"found {len(managed_team_matches)}."
+        )
+
+    managed_team = (
+        managed_team_matches[
+            0
+        ]
+    )
+
     players = (
         fetch_all_players(
             yahoo,
@@ -587,6 +626,79 @@ def main() -> int:
         roster_position_payload
     )
 
+    market_result = (
+        build_market_decisions(
+            rows=payload[
+                "rows"
+            ],
+            roster_positions=(
+                league.roster_positions
+            ),
+            is_undroppable_by_player_key={
+                row.provider_player_key: (
+                    row.is_undroppable
+                )
+                for row in players
+            },
+            max_weekly_adds=(
+                league.max_weekly_adds
+            ),
+            weekly_adds_used=(
+                managed_team.weekly_adds_used
+            ),
+        )
+    )
+
+    (
+        transaction_context,
+        market_recommendations,
+    ) = market_decision_result_payload(
+        market_result
+    )
+
+    transaction_context.update(
+        {
+            "managed_team_key": (
+                managed_team
+                .provider_team_key
+            ),
+            "managed_team_name": (
+                managed_team.name
+            ),
+            "weekly_adds_used": (
+                managed_team
+                .weekly_adds_used
+            ),
+            "max_weekly_adds": (
+                league.max_weekly_adds
+            ),
+            "waiver_priority": (
+                managed_team
+                .waiver_priority
+            ),
+            "waiver_type": (
+                league.waiver_type
+            ),
+            "waiver_rule": (
+                league.waiver_rule
+            ),
+            "waiver_days": (
+                league.waiver_days
+            ),
+            "uses_faab": (
+                league.uses_faab
+            ),
+        }
+    )
+
+    payload[
+        "transaction_context"
+    ] = transaction_context
+
+    payload[
+        "market_recommendations"
+    ] = market_recommendations
+
     written = (
         write_three_day_snapshot(
             payload=payload,
@@ -605,6 +717,21 @@ def main() -> int:
     )
     print(
         f"YAHOO_PLAYERS={len(players)}"
+    )
+    print(
+        f"YAHOO_FANTASY_TEAMS={len(fantasy_teams)}"
+    )
+    print(
+        "MANAGED_TEAM_WEEKLY_ADDS_USED="
+        f"{managed_team.weekly_adds_used}"
+    )
+    print(
+        "MARKET_DECISION_STATE="
+        f"{market_result.state}"
+    )
+    print(
+        "MARKET_RECOMMENDATIONS="
+        f"{len(market_result.recommendations)}"
     )
     print(
         f"CANONICAL_STRENGTHS={len(strengths)}"

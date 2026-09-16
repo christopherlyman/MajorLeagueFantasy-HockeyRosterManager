@@ -1348,3 +1348,64 @@ snapshot root as `roster_positions`. This metadata is configuration only; it
 does not alter player projections or market state. The UI remains backward
 compatible with an older snapshot that does not yet contain this optional
 metadata.
+
+## Market Transaction Decision Engine
+
+The market-decision layer evaluates skater free-agent transactions against the
+managed Yahoo roster using usable three-day starting-lineup points, not raw
+player rank alone.
+
+A candidate transaction is evaluated by:
+
+1. removing one droppable managed-roster skater;
+2. adding one immediately available Yahoo free-agent skater;
+3. rebuilding the optimal legal skater lineup for Today, Tomorrow, and Day+2;
+4. comparing the resulting usable starting-lineup points with the unchanged
+   roster baseline.
+
+A transaction must improve usable three-day lineup value by at least 0.50 NFHL
+points before it is recommended. This floor suppresses marginal churn.
+
+`ADD` means the incoming player's three-day per-game value exceeds the outgoing
+player's by at least 0.05 points per scheduled game in addition to producing a
+usable lineup gain.
+
+`STREAM` means the transaction produces the required usable three-day gain but
+the incoming player is not a clear per-game talent upgrade. The gain therefore
+comes primarily from near-term schedule volume and/or positional congestion.
+
+Every recommended acquisition is paired with an explicit `DROP`. If no
+qualifying transaction exists, the overall market action is `HOLD`.
+
+### Transaction hard constraints
+
+Yahoo `is_undroppable` is a hard constraint. An undroppable player is never
+considered as an outgoing player.
+
+If the league has a finite weekly-add limit and the managed team's add usage is
+known to have reached that limit, all ADD/STREAM recommendations are blocked.
+If the league has a finite limit but current usage is unavailable, the engine
+also withholds transaction advice rather than assuming an add is available.
+
+Yahoo ownership state is authoritative. Only canonical `free_agent` players
+are treated as immediately actionable in V1. Canonical `waiver` players are
+counted and surfaced but are not treated as immediately acquirable because the
+current data contract does not contain each player's waiver-clear timestamp.
+
+Goalie transactions remain outside this first market layer until the separate
+goalie-start model is connected.
+
+### Candidate search boundary
+
+To keep the daily refresh bounded, the engine evaluates a deterministic
+position-aware free-agent candidate pool: the highest three-day-value skaters
+overall plus the highest values at each legal starting skater position. This
+preserves positional specialists without brute-forcing every irrelevant player.
+
+### Snapshot transaction metadata
+
+The permanent refresh writes a root `transaction_context` object containing the
+managed-team add usage, league add limit, waiver configuration, engine state,
+and summary counts. It also writes root `market_recommendations`.
+
+These root fields are optional for backward-compatible snapshot loading.
