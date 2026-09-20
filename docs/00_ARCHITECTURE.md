@@ -1409,3 +1409,54 @@ managed-team add usage, league add limit, waiver configuration, engine state,
 and summary counts. It also writes root `market_recommendations`.
 
 These root fields are optional for backward-compatible snapshot loading.
+
+## Daily Starting Goalie Evidence
+
+Daily goalie start evidence is a separate current-state layer from canonical
+season-long goalie strength.
+
+Canonical goalie strength remains unchanged:
+- goalie quality is the expected NFHL fantasy-point rate per actual start;
+- preseason workload estimates expected starts across the season;
+- Daily Faceoff season projection CSV data remains a workload source only;
+- daily starter evidence must not mutate the canonical strength artifact.
+
+Daily starting-goalie evidence uses the public Daily Faceoff
+`/starting-goalies/YYYY-MM-DD` page. The permanent provider parses the
+server-delivered `__NEXT_DATA__` JSON rather than rendered DOM markup or
+browser automation.
+
+The provider contract is the game list at:
+
+`props.pageProps.data`
+
+Each game can provide home and away:
+- Daily Faceoff goalie identity;
+- team identity;
+- opponent identity;
+- game date and UTC game time;
+- provider evidence state;
+- evidence timestamp;
+- evidence source name and source URL.
+
+Provider evidence states are preserved without inventing probabilities:
+- `Confirmed` -> `confirmed`;
+- `Likely` -> `likely`;
+- null `NewsStrengthName` with a populated goalie -> `unconfirmed`.
+
+Any new non-null provider strength/status is treated as an upstream contract
+change and fails closed until explicitly reviewed.
+
+Missing goalie evidence is not interpreted as a zero-value goalie and is not
+equivalent to a confirmed backup.
+
+The first implementation boundary is domain + provider parsing only. It does
+not yet:
+- alter three-day expected points;
+- remove the lineup `goalie_start_model_pending` gate;
+- enable goalies in ADD/DROP/STREAM decisions;
+- assign numeric start probabilities;
+- change canonical goalie quality or workload.
+
+Daily valuation and decision integration must consume this evidence in a
+later verified batch.
