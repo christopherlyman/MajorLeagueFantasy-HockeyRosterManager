@@ -14,11 +14,14 @@ from hockey_rmt.domain.player_availability import (
 
 import math
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date
 
 from hockey_rmt.domain.daily_value import (
     DAILY_VALUE_AVAILABLE,
+    DAILY_VALUE_GOALIE_START_LIKELY,
+    DAILY_VALUE_GOALIE_START_UNCONFIRMED,
+    DAILY_VALUE_GOALIE_START_UNKNOWN,
     DAILY_VALUE_OFF,
     DAILY_VALUE_SCHEDULE_UNKNOWN,
     DAILY_VALUE_SOURCE_SEASON_STRENGTH,
@@ -27,6 +30,13 @@ from hockey_rmt.domain.daily_value import (
 )
 from hockey_rmt.domain.game_context import (
     PlayerGameContext,
+)
+from hockey_rmt.domain.goalie_start import (
+    GOALIE_START_CONFIRMED,
+    GOALIE_START_LIKELY,
+    GOALIE_START_STATES,
+    GOALIE_START_UNCONFIRMED,
+    DailyGoalieStartEvidence,
 )
 from hockey_rmt.domain.player_strength import (
     STRENGTH_AVAILABLE,
@@ -58,6 +68,10 @@ def build_baseline_daily_expected_values(
     projection_adjustments: Sequence[
         PlayerProjectionAdjustment
     ] = (),
+    goalie_starts_by_nhl_id: Mapping[
+        int,
+        DailyGoalieStartEvidence,
+    ] | None = None,
 ) -> tuple[
     DailyExpectedValue,
     ...,
@@ -65,6 +79,85 @@ def build_baseline_daily_expected_values(
     requested_season = int(
         season_id
     )
+
+    goalie_start_rows = None
+
+    if goalie_starts_by_nhl_id is not None:
+        goalie_start_rows = {}
+
+        for (
+            raw_nhl_player_id,
+            evidence,
+        ) in goalie_starts_by_nhl_id.items():
+            if isinstance(
+                raw_nhl_player_id,
+                bool,
+            ):
+                raise DailyValueError(
+                    "Goalie-start NHL playerId "
+                    "must be an integer."
+                )
+
+            try:
+                nhl_player_id = int(
+                    raw_nhl_player_id
+                )
+            except (
+                TypeError,
+                ValueError,
+            ) as exc:
+                raise DailyValueError(
+                    "Goalie-start NHL playerId "
+                    "must be an integer."
+                ) from exc
+
+            if nhl_player_id <= 0:
+                raise DailyValueError(
+                    "Goalie-start NHL playerId "
+                    "must be positive."
+                )
+
+            if (
+                nhl_player_id
+                in goalie_start_rows
+            ):
+                raise DailyValueError(
+                    "Goalie-start input contained "
+                    "duplicate NHL playerId "
+                    f"{nhl_player_id}."
+                )
+
+            if not isinstance(
+                evidence,
+                DailyGoalieStartEvidence,
+            ):
+                raise DailyValueError(
+                    "Goalie-start input contained "
+                    "an invalid evidence object for "
+                    f"NHL playerId {nhl_player_id}."
+                )
+
+            if evidence.game_date != game_date:
+                raise DailyValueError(
+                    "Goalie-start evidence date "
+                    f"{evidence.game_date.isoformat()} "
+                    "did not match requested date "
+                    f"{game_date.isoformat()}."
+                )
+
+            if (
+                evidence.start_state
+                not in GOALIE_START_STATES
+            ):
+                raise DailyValueError(
+                    "Goalie-start evidence contained "
+                    "unsupported state "
+                    f"{evidence.start_state!r}."
+                )
+
+            goalie_start_rows[
+                nhl_player_id
+            ] = evidence
 
     strength_by_key = {}
     strength_order = []
@@ -416,6 +509,68 @@ def build_baseline_daily_expected_values(
                 f"{key!r}."
             )
 
+        goalie_start = None
+        goalie_start_state = None
+        goalie_start_source = None
+        goalie_start_provider_goalie_id = None
+        goalie_start_evidence_created_at_utc = None
+        goalie_start_evidence_source_name = None
+        goalie_start_evidence_source_url = None
+
+        goalie_start_model_enabled = (
+            goalie_start_rows is not None
+            and str(
+                strength.player_type
+            ).strip().upper()
+            == "G"
+        )
+
+        if (
+            goalie_start_model_enabled
+            and strength.nhl_player_id
+            is not None
+        ):
+            goalie_start = (
+                goalie_start_rows.get(
+                    int(
+                        strength.nhl_player_id
+                    )
+                )
+            )
+
+        if goalie_start is not None:
+            if schedule_state != "scheduled":
+                raise DailyValueError(
+                    "Goalie-start evidence was "
+                    "supplied for a player without "
+                    "a scheduled game: "
+                    f"{key!r}, "
+                    f"schedule_state="
+                    f"{schedule_state!r}."
+                )
+
+            goalie_start_state = (
+                goalie_start.start_state
+            )
+            goalie_start_source = (
+                goalie_start.source
+            )
+            goalie_start_provider_goalie_id = (
+                goalie_start.provider_goalie_id
+            )
+            goalie_start_evidence_created_at_utc = (
+                goalie_start
+                .evidence_created_at_utc
+            )
+            goalie_start_evidence_source_name = (
+                goalie_start
+                .evidence_source_name
+            )
+            goalie_start_evidence_source_url = (
+                goalie_start
+                .evidence_source_url
+            )
+
         if (
             schedule_state
             == "unknown_team"
@@ -468,6 +623,62 @@ def build_baseline_daily_expected_values(
 
             baseline_source = None
             expected_points = None
+
+        elif (
+            goalie_start_model_enabled
+            and goalie_start is None
+        ):
+            value_state = (
+                DAILY_VALUE_GOALIE_START_UNKNOWN
+            )
+
+            baseline_source = (
+                DAILY_VALUE_SOURCE_SEASON_STRENGTH
+            )
+
+            expected_points = None
+
+        elif (
+            goalie_start_model_enabled
+            and goalie_start_state
+            == GOALIE_START_LIKELY
+        ):
+            value_state = (
+                DAILY_VALUE_GOALIE_START_LIKELY
+            )
+
+            baseline_source = (
+                DAILY_VALUE_SOURCE_SEASON_STRENGTH
+            )
+
+            expected_points = None
+
+        elif (
+            goalie_start_model_enabled
+            and goalie_start_state
+            == GOALIE_START_UNCONFIRMED
+        ):
+            value_state = (
+                DAILY_VALUE_GOALIE_START_UNCONFIRMED
+            )
+
+            baseline_source = (
+                DAILY_VALUE_SOURCE_SEASON_STRENGTH
+            )
+
+            expected_points = None
+
+        elif (
+            goalie_start_model_enabled
+            and goalie_start_state
+            != GOALIE_START_CONFIRMED
+        ):
+            raise DailyValueError(
+                "Goalie-start valuation received "
+                "an unsupported state "
+                f"{goalie_start_state!r} "
+                f"for {key!r}."
+            )
 
         else:
             value_state = (
@@ -559,6 +770,24 @@ def build_baseline_daily_expected_values(
                 ),
                 provider_status_full=(
                     context.provider_status_full
+                ),
+                goalie_start_state=(
+                    goalie_start_state
+                ),
+                goalie_start_source=(
+                    goalie_start_source
+                ),
+                goalie_start_provider_goalie_id=(
+                    goalie_start_provider_goalie_id
+                ),
+                goalie_start_evidence_created_at_utc=(
+                    goalie_start_evidence_created_at_utc
+                ),
+                goalie_start_evidence_source_name=(
+                    goalie_start_evidence_source_name
+                ),
+                goalie_start_evidence_source_url=(
+                    goalie_start_evidence_source_url
                 ),
             )
         )

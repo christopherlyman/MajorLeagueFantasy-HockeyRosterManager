@@ -26,6 +26,16 @@ DAILY_VALUE_PLAYER_UNAVAILABLE = (
     "player_unavailable"
 )
 
+DAILY_VALUE_GOALIE_START_UNKNOWN = (
+    "goalie_start_unknown"
+)
+DAILY_VALUE_GOALIE_START_LIKELY = (
+    "goalie_start_likely"
+)
+DAILY_VALUE_GOALIE_START_UNCONFIRMED = (
+    "goalie_start_unconfirmed"
+)
+
 
 @dataclass(frozen=True)
 class DailyExpectedValue:
@@ -66,3 +76,16 @@ class DailyExpectedValue:
     availability_state: str = "available"
     provider_status: str | None = None
     provider_status_full: str | None = None
+
+    goalie_start_state: str | None = None
+    goalie_start_source: str | None = None
+    goalie_start_provider_goalie_id: int | None = None
+    goalie_start_evidence_created_at_utc: (
+        datetime | None
+    ) = None
+    goalie_start_evidence_source_name: (
+        str | None
+    ) = None
+    goalie_start_evidence_source_url: (
+        str | None
+    ) = None

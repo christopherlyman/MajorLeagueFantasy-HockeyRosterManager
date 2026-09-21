@@ -1486,3 +1486,35 @@ Daily Faceoff evidence by NHL playerId for downstream daily valuation.
 
 Daily-value construction must consume already-resolved NHL identity and must
 not perform provider-name matching itself.
+
+### Daily goalie valuation semantics
+
+Daily goalie valuation consumes already NHL-resolved starting-goalie evidence.
+Provider identity resolution remains outside the daily-value service.
+
+The first goalie valuation contract is deliberately non-probabilistic:
+- `confirmed` starter evidence -> use the goalie's canonical per-start fantasy
+  value for that scheduled game;
+- `likely` evidence -> expected fantasy points remain unknown (`None`);
+- `unconfirmed` evidence -> expected fantasy points remain unknown (`None`);
+- no resolved starter evidence -> expected fantasy points remain unknown
+  (`None`);
+- unknown evidence is never interpreted as zero;
+- no numeric probability is invented for provider status labels.
+
+Existing higher-priority daily states remain authoritative:
+- unknown team/schedule remains unknown;
+- off day remains zero;
+- hard player unavailability remains zero;
+- unavailable canonical strength remains unknown.
+
+The goalie-start input is optional. When the caller does not provide the
+goalie-start mapping, the existing legacy daily-value behavior is preserved.
+This permits the valuation contract to be implemented and tested before the
+refresh orchestration is changed.
+
+Daily value records retain goalie-start evidence metadata for later ranking,
+UI explanation, and lineup integration.
+
+This batch does not fetch Daily Faceoff data, change refresh orchestration,
+remove the lineup goalie gate, or enable goalies in market decisions.
