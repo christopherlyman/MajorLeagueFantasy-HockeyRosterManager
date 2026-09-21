@@ -1460,3 +1460,29 @@ not yet:
 
 Daily valuation and decision integration must consume this evidence in a
 later verified batch.
+
+### Daily goalie identity resolution
+
+Raw Daily Faceoff starting-goalie evidence remains provider-native until a
+separate identity-resolution step maps it to official NHL identity.
+
+Resolution policy:
+- normalize Daily Faceoff and NHL player names with the existing shared player
+  name normalizer;
+- resolve the Daily Faceoff full team name against the current NHL team
+  registry using the existing shared team-name normalizer;
+- prefer a manually reviewed Daily Faceoff playerId -> NHL playerId override
+  when one exists;
+- otherwise require exactly one NHL goalie with the exact normalized name on
+  the exact resolved NHL team;
+- do not resolve by name alone when team evidence does not agree;
+- leave unmatched or ambiguous evidence unresolved rather than guessing;
+- reject reviewed overrides whose NHL identity or team does not agree with
+  current official NHL identity data.
+
+The identity layer preserves raw goalie-start evidence and produces standard
+`PlayerIdentityResolution` rows. A convenience mapping may expose resolved
+Daily Faceoff evidence by NHL playerId for downstream daily valuation.
+
+Daily-value construction must consume already-resolved NHL identity and must
+not perform provider-name matching itself.
