@@ -1549,3 +1549,27 @@ depends on it.
 
 This integration does not remove the lineup goalie gate and does not enable
 goalies in market decisions. Those remain separate post-snapshot proof steps.
+
+### Ambiguous Daily Faceoff deployment membership
+
+Daily Faceoff deployment evidence is preserved exactly as supplied by the
+provider. The projection layer normally requires at most one even-strength
+group and at most one power-play group per player.
+
+Real-provider validation identified a rare Daily Faceoff state in which one
+player was simultaneously listed on both PP1 and PP2. For the exact
+power-play group set `{pp1, pp2}`, the current-state adjustment treats the
+power-play component as ambiguous and neutral:
+
+- the raw PP1 and PP2 assignments remain unchanged;
+- neither PP1 nor PP2 adjustment is selected;
+- the player is not treated as having no power-play role;
+- therefore the normal no-PP penalty is not applied;
+- any valid even-strength adjustment is still applied;
+- the reason includes `dfo_pp_ambiguous:pp1,pp2:neutral`.
+
+Any other multi-group power-play combination continues to fail closed.
+Multiple even-strength groups also continue to fail closed.
+
+This policy prevents one contradictory provider record from aborting the
+entire refresh without inventing a preferred power-play unit.

@@ -289,12 +289,34 @@ def _deployment_factor(
             f"{sorted(ev_groups)!r}."
         )
 
+    pp_ambiguity_reason = None
+
     if len(pp_groups) > 1:
-        raise ProjectionAdjustmentError(
-            "Daily Faceoff deployment contained "
-            "multiple power-play groups for "
-            f"{deployment.full_name!r}: "
-            f"{sorted(pp_groups)!r}."
+        if pp_groups == {
+            "pp1",
+            "pp2",
+        }:
+            pp_group = None
+            pp_ambiguity_reason = (
+                "dfo_pp_ambiguous:"
+                "pp1,pp2:neutral"
+            )
+        else:
+            raise ProjectionAdjustmentError(
+                "Daily Faceoff deployment contained "
+                "multiple power-play groups for "
+                f"{deployment.full_name!r}: "
+                f"{sorted(pp_groups)!r}."
+            )
+    else:
+        pp_group = (
+            next(
+                iter(
+                    pp_groups
+                )
+            )
+            if pp_groups
+            else None
         )
 
     ev_group = (
@@ -307,18 +329,13 @@ def _deployment_factor(
         else None
     )
 
-    pp_group = (
-        next(
-            iter(
-                pp_groups
-            )
-        )
-        if pp_groups
-        else None
-    )
-
     effect = 0.0
     reasons = []
+
+    if pp_ambiguity_reason is not None:
+        reasons.append(
+            pp_ambiguity_reason
+        )
 
     if ev_group is not None:
         ev_effect = (
@@ -358,7 +375,10 @@ def _deployment_factor(
                 f"{pp_effect:+.3f}"
             )
 
-    elif ev_group is not None:
+    elif (
+        pp_ambiguity_reason is None
+        and ev_group is not None
+    ):
         effect += (
             _DFO_NO_PP_EFFECT
         )
