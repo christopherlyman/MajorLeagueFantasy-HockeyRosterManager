@@ -68,6 +68,13 @@ def build_three_day_refresh_payload(
     projection_adjustments: Sequence[
         PlayerProjectionAdjustment
     ] = (),
+    goalie_starts_by_date: Mapping[
+        date,
+        Mapping[
+            int,
+            object,
+        ],
+    ] | None = None,
 ) -> dict[
     str,
     Any,
@@ -83,6 +90,47 @@ def build_three_day_refresh_payload(
     market_rows = tuple(
         market_states
     )
+
+    goalie_rows_by_date = None
+
+    if goalie_starts_by_date is not None:
+        expected_goalie_dates = {
+            base_date
+            + timedelta(
+                days=offset
+            )
+            for offset in range(
+                3
+            )
+        }
+
+        supplied_goalie_dates = set(
+            goalie_starts_by_date
+        )
+
+        if (
+            supplied_goalie_dates
+            != expected_goalie_dates
+        ):
+            raise DailyRefreshError(
+                "Goalie-start date coverage did "
+                "not exactly match the three-day "
+                "refresh window: missing="
+                f"{sorted(expected_goalie_dates - supplied_goalie_dates)}, "
+                "extra="
+                f"{sorted(supplied_goalie_dates - expected_goalie_dates)}."
+            )
+
+        goalie_rows_by_date = {
+            game_date: dict(
+                goalie_starts_by_date[
+                    game_date
+                ]
+            )
+            for game_date in sorted(
+                expected_goalie_dates
+            )
+        }
 
     if not player_rows:
         raise DailyRefreshError(
@@ -196,6 +244,14 @@ def build_three_day_refresh_payload(
                 ),
                 projection_adjustments=(
                     projection_adjustments
+                ),
+                goalie_starts_by_nhl_id=(
+                    goalie_rows_by_date[
+                        game_date
+                    ]
+                    if goalie_rows_by_date
+                    is not None
+                    else None
                 ),
             )
         )

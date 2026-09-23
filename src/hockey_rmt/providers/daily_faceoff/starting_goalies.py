@@ -4,6 +4,8 @@ import json
 from datetime import date, datetime, timezone
 from html.parser import HTMLParser
 
+import requests
+
 from hockey_rmt.domain.goalie_start import (
     GOALIE_START_CONFIRMED,
     GOALIE_START_LIKELY,
@@ -16,6 +18,16 @@ from hockey_rmt.domain.goalie_start import (
 DAILY_FACEOFF_STARTING_GOALIES_BASE_URL = (
     "https://www.dailyfaceoff.com/starting-goalies"
 )
+
+_DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 "
+        "(Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 "
+        "(KHTML, like Gecko) "
+        "Chrome/152.0 Safari/537.36"
+    )
+}
 
 
 class DailyFaceoffStartingGoaliesError(
@@ -558,4 +570,49 @@ def parse_starting_goalies_page(
 
     return tuple(
         result
+    )
+
+def fetch_starting_goalies(
+    game_date: date,
+    *,
+    session: requests.Session | None = None,
+    timeout_seconds: float = 30.0,
+) -> tuple[
+    DailyGoalieStartEvidence,
+    ...,
+]:
+    client = (
+        session
+        if session is not None
+        else requests.Session()
+    )
+
+    try:
+        response = client.get(
+            starting_goalies_url(
+                game_date
+            ),
+            timeout=float(
+                timeout_seconds
+            ),
+            headers=_DEFAULT_HEADERS,
+        )
+    except requests.RequestException as exc:
+        raise DailyFaceoffStartingGoaliesError(
+            "Daily Faceoff starting-goalie "
+            "page request failed for "
+            f"{game_date.isoformat()}."
+        ) from exc
+
+    if response.status_code != 200:
+        raise DailyFaceoffStartingGoaliesError(
+            "Daily Faceoff starting-goalie "
+            "page failed with HTTP "
+            f"{response.status_code} for "
+            f"{game_date.isoformat()}."
+        )
+
+    return parse_starting_goalies_page(
+        response.text,
+        expected_date=game_date,
     )

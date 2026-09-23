@@ -17,6 +17,10 @@ from hockey_rmt.providers.daily_faceoff.deployment import (
     fetch_team_deployment,
     team_slug_for_nhl_abbr,
 )
+from hockey_rmt.providers.daily_faceoff.starting_goalies import (
+    DailyFaceoffStartingGoaliesError,
+    fetch_starting_goalies,
+)
 from hockey_rmt.providers.moneypuck.skater_trends import (
     MoneyPuckSkaterTrendError,
     fetch_skater_performance_trends,
@@ -54,6 +58,9 @@ from hockey_rmt.providers.yahoo.player_pool import (
 )
 from hockey_rmt.services.current_state_evidence import (
     build_current_state_projection_adjustments,
+)
+from hockey_rmt.services.goalie_start_identity import (
+    build_goalie_starts_by_nhl_id,
 )
 from hockey_rmt.providers.yahoo.teams import (
     fetch_league_teams,
@@ -103,6 +110,8 @@ MODEL_LABEL = (
     "use Daily Faceoff deployment, official NHL "
     "current-season production, and MoneyPuck "
     "role/process trends when available. "
+    "Daily Faceoff confirmed starting-goalie "
+    "evidence gates goalie daily value. "
     "Matchup adjustment is not yet applied."
 )
 
@@ -350,6 +359,71 @@ def _fetch_deployment_snapshots(
     )
 
 
+def _fetch_goalie_start_mappings(
+    *,
+    base_date: date,
+    nhl_player_registry,
+    nhl_teams,
+):
+    result = {}
+
+    for offset in range(
+        3
+    ):
+        game_date = (
+            base_date
+            + timedelta(
+                days=offset
+            )
+        )
+
+        try:
+            evidence = (
+                fetch_starting_goalies(
+                    game_date
+                )
+            )
+        except DailyFaceoffStartingGoaliesError as exc:
+            raise RuntimeError(
+                "Daily Faceoff starting-goalie "
+                "evidence failed for required "
+                f"date {game_date.isoformat()}."
+            ) from exc
+
+        resolved = (
+            build_goalie_starts_by_nhl_id(
+                goalie_starts=evidence,
+                nhl_players=(
+                    nhl_player_registry
+                ),
+                nhl_teams=nhl_teams,
+                game_date=game_date,
+            )
+        )
+
+        result[
+            game_date
+        ] = resolved
+
+    expected_dates = {
+        base_date
+        + timedelta(
+            days=offset
+        )
+        for offset in range(
+            3
+        )
+    }
+
+    if set(result) != expected_dates:
+        raise RuntimeError(
+            "Starting-goalie refresh did not "
+            "produce exact three-day coverage."
+        )
+
+    return result
+
+
 def main() -> int:
     root = _project_root()
 
@@ -551,8 +625,16 @@ def main() -> int:
 
     nhl_player_registry = (
         fetch_player_registry()
-        if deployment_snapshots
-        else ()
+    )
+
+    goalie_starts_by_date = (
+        _fetch_goalie_start_mappings(
+            base_date=args.base_date,
+            nhl_player_registry=(
+                nhl_player_registry
+            ),
+            nhl_teams=nhl_teams,
+        )
     )
 
     projection_adjustments = (
@@ -610,6 +692,9 @@ def main() -> int:
             ),
             projection_adjustments=(
                 projection_adjustments
+            ),
+            goalie_starts_by_date=(
+                goalie_starts_by_date
             ),
         )
     )
@@ -779,6 +864,14 @@ def main() -> int:
     print(
         "NHL_PLAYER_REGISTRY_ROWS="
         f"{len(nhl_player_registry)}"
+    )
+    print(
+        "DFO_GOALIE_START_DATES="
+        f"{len(goalie_starts_by_date)}"
+    )
+    print(
+        "DFO_GOALIE_START_RESOLVED_ROWS="
+        f"{sum(len(rows) for rows in goalie_starts_by_date.values())}"
     )
     print(
         "PROJECTION_ADJUSTMENT_ROWS="

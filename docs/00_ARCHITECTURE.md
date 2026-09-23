@@ -1518,3 +1518,34 @@ UI explanation, and lineup integration.
 
 This batch does not fetch Daily Faceoff data, change refresh orchestration,
 remove the lineup goalie gate, or enable goalies in market decisions.
+
+### Three-day goalie refresh integration
+
+The authoritative three-day refresh obtains Daily Faceoff starting-goalie
+evidence separately for Today, Tomorrow, and D+2.
+
+Refresh flow:
+1. fetch each date-specific Daily Faceoff starting-goalie page;
+2. parse the structured provider evidence;
+3. resolve provider goalie identity to official NHL playerId;
+4. retain one NHL-playerId -> start-evidence mapping for each date;
+5. pass each date's mapping into daily-value construction.
+
+All three dates are required before goalie-aware refresh output is produced.
+A provider HTTP failure, malformed page, parser failure, or other
+Daily Faceoff starting-goalie provider failure aborts the refresh before a
+new three-day snapshot is written. Provider failure must never be interpreted
+as a successful empty evidence set or as permission to restore the legacy
+assumption that every scheduled goalie starts.
+
+A successfully fetched date may legitimately resolve to an empty mapping.
+That still means the goalie-start model is active for that date, so scheduled
+goalies without resolved starter evidence remain unknown rather than
+receiving automatic per-start value.
+
+The official NHL player registry is fetched independently of skater
+deployment availability because goalie-start identity resolution also
+depends on it.
+
+This integration does not remove the lineup goalie gate and does not enable
+goalies in market decisions. Those remain separate post-snapshot proof steps.
