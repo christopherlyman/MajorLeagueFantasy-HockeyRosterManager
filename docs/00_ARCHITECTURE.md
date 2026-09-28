@@ -1324,6 +1324,37 @@ separate future layer.
 
 ## Daily Lineup Decision Engine
 
+### Confirmed-goalie lineup participation
+
+Daily goalie lineup decisions are activated only by an explicit snapshot-root
+contract: `goalie_start_model_active = true`.
+
+The permanent refresh sets this flag only after the exact three-date
+starting-goalie evidence window has been supplied to daily valuation. Legacy
+snapshots that omit the flag, or snapshots where it is not exactly true, retain
+the previous fail-closed behavior: every scheduled goalie remains HOLD with
+`goalie_start_model_pending`.
+
+When the model is active:
+- a scheduled goalie with `value_state = available` and a positive expected
+  value is eligible for a legal `G` starting slot; under the active daily-value
+  contract this state is reachable only for a confirmed starter;
+- `goalie_start_likely` remains HOLD;
+- `goalie_start_unconfirmed` remains HOLD;
+- `goalie_start_unknown` remains HOLD;
+- any other goalie value state remains HOLD rather than being inferred as a
+  starter;
+- off-day, unavailable-player, unresolved-schedule, and nonpositive-projection
+  precedence remains unchanged.
+
+Confirmed goalies participate in the same deterministic global lineup
+optimizer as skaters. If confirmed goalies exceed the available `G` capacity,
+the optimizer starts the higher-value legal combination and returns BENCH for
+the remaining confirmed goalie.
+
+The goalie market/streaming engine remains separately gated and is not enabled
+by this lineup change.
+
 The first decision-engine layer converts the live three-day player-value
 snapshot into deterministic daily lineup recommendations for the managed Yahoo
 team.

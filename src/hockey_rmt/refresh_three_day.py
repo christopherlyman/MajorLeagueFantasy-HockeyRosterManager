@@ -734,6 +734,10 @@ def main() -> int:
         roster_position_payload
     )
 
+    payload[
+        "goalie_start_model_active"
+    ] = True
+
     market_result = (
         build_market_decisions(
             rows=payload[

@@ -411,6 +411,7 @@ def build_daily_lineup_decisions(
         RosterPosition | Mapping
     ],
     day_key: str,
+    goalie_start_model_active: bool = False,
 ) -> tuple[
     DailyLineupDecision,
     ...,
@@ -419,6 +420,15 @@ def build_daily_lineup_decisions(
         raise LineupOptimizerError(
             "day_key must be today, tomorrow, "
             "or day_plus_2."
+        )
+
+    if not isinstance(
+        goalie_start_model_active,
+        bool,
+    ):
+        raise LineupOptimizerError(
+            "goalie_start_model_active must be "
+            "boolean."
         )
 
     managed_rows = tuple(
@@ -441,7 +451,7 @@ def build_daily_lineup_decisions(
         )
     )
 
-    starting_skater_slots = tuple(
+    starting_slots = tuple(
         (
             position,
             count,
@@ -457,12 +467,17 @@ def build_daily_lineup_decisions(
             is_starting
             and position
             not in _NON_STARTING_POSITION_NAMES
-            and position != "G"
-            and str(
-                position_type
-                or ""
-            ).strip().casefold()
-            != "g"
+            and (
+                goalie_start_model_active
+                or (
+                    position != "G"
+                    and str(
+                        position_type
+                        or ""
+                    ).strip().casefold()
+                    != "g"
+                )
+            )
         )
     )
 
@@ -519,6 +534,13 @@ def build_daily_lineup_decisions(
             )
         ).strip()
 
+        value_state = str(
+            day.get(
+                "value_state",
+                "",
+            )
+        ).strip().casefold()
+
         availability_state = str(
             row.get(
                 "availability_state",
@@ -563,9 +585,41 @@ def build_daily_lineup_decisions(
             )
 
         elif player_kind == "G":
-            hold_reason = (
-                "goalie_start_model_pending"
-            )
+            if not goalie_start_model_active:
+                hold_reason = (
+                    "goalie_start_model_pending"
+                )
+
+            elif value_state in {
+                "goalie_start_likely",
+                "goalie_start_unconfirmed",
+                "goalie_start_unknown",
+            }:
+                hold_reason = value_state
+
+            elif value_state != "available":
+                hold_reason = (
+                    "goalie_start_state_unresolved"
+                )
+
+            elif (
+                expected_points is None
+                or expected_points <= 0.0
+            ):
+                hold_reason = (
+                    "no_positive_projection"
+                )
+
+            else:
+                candidates.append(
+                    (
+                        key,
+                        name,
+                        expected_points,
+                        eligible_positions,
+                        availability_state,
+                    )
+                )
 
         elif (
             expected_points is None
@@ -598,13 +652,13 @@ def build_daily_lineup_decisions(
     slot_names = tuple(
         position
         for position, _
-        in starting_skater_slots
+        in starting_slots
     )
 
     capacities = tuple(
         count
         for _, count
-        in starting_skater_slots
+        in starting_slots
     )
 
     candidates = tuple(

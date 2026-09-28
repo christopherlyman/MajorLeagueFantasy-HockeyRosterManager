@@ -483,6 +483,18 @@ def _decision_reason_label(
         "goalie_start_model_pending": (
             "Goalie start model pending"
         ),
+        "goalie_start_likely": (
+            "Goalie start likely; awaiting confirmation"
+        ),
+        "goalie_start_unconfirmed": (
+            "Goalie start unconfirmed"
+        ),
+        "goalie_start_unknown": (
+            "Goalie starter unknown"
+        ),
+        "goalie_start_state_unresolved": (
+            "Goalie start state unresolved"
+        ),
         "no_same_day_action": (
             "No same-day action"
         ),
@@ -663,6 +675,12 @@ else:
                     roster_positions
                 ),
                 day_key=day_key,
+                goalie_start_model_active=(
+                    snapshot.get(
+                        "goalie_start_model_active"
+                    )
+                    is True
+                ),
             )
         )
 
@@ -746,10 +764,12 @@ else:
         )
 
         st.caption(
-            "START/BENCH currently optimizes "
-            "skaters only. Scheduled goalies "
-            "remain HOLD until the separate "
-            "goalie-start model is connected."
+            "START/BENCH uses the full legal lineup. "
+            "Goalies enter START/BENCH only when the "
+            "goalie-start model is active and the "
+            "starter is confirmed; likely, "
+            "unconfirmed, and unknown goalies "
+            "remain HOLD."
         )
 
 
