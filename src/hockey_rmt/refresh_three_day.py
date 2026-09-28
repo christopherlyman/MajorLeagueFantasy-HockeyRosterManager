@@ -78,6 +78,9 @@ from hockey_rmt.services.daily_refresh import (
 from hockey_rmt.services.fantasy_value import (
     score_historical_season,
 )
+from hockey_rmt.services.player_strength import (
+    reconcile_player_strengths_for_current_universe,
+)
 from hockey_rmt.services.player_strength_snapshot import (
     load_player_strength_snapshot,
 )
@@ -560,6 +563,26 @@ def main() -> int:
         )
     )
 
+    canonical_strength_rows = len(
+        strengths
+    )
+
+    strengths = (
+        reconcile_player_strengths_for_current_universe(
+            players=players,
+            canonical_strengths=strengths,
+            projection_season_id=(
+                PROJECTION_SEASON_ID
+            ),
+        )
+    )
+
+    late_addition_strength_rows = (
+        len(strengths)
+        - canonical_strength_rows
+    )
+
+
     player_keys = tuple(
         row.provider_player_key
         for row in players
@@ -872,6 +895,18 @@ def main() -> int:
     print(
         "DFO_GOALIE_START_RESOLVED_ROWS="
         f"{sum(len(rows) for rows in goalie_starts_by_date.values())}"
+    )
+    print(
+        "CANONICAL_STRENGTH_ROWS="
+        f"{canonical_strength_rows}"
+    )
+    print(
+        "EFFECTIVE_STRENGTH_ROWS="
+        f"{len(strengths)}"
+    )
+    print(
+        "LATE_ADDITION_STRENGTH_ROWS="
+        f"{late_addition_strength_rows}"
     )
     print(
         "PROJECTION_ADJUSTMENT_ROWS="

@@ -8,6 +8,9 @@ STRENGTH_IDENTITY_UNRESOLVED = (
     "identity_unresolved"
 )
 STRENGTH_NO_PROJECTION = "no_projection"
+STRENGTH_LATE_ADDITION_UNPROJECTED = (
+    "late_addition_unprojected"
+)
 
 
 SOURCE_ESTABLISHED_SKATER = (

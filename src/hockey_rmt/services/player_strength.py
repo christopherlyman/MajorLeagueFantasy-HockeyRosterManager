@@ -17,6 +17,7 @@ from hockey_rmt.domain.player_strength import (
     SOURCE_ROOKIE_SKATER,
     STRENGTH_AVAILABLE,
     STRENGTH_IDENTITY_UNRESOLVED,
+    STRENGTH_LATE_ADDITION_UNPROJECTED,
     STRENGTH_NO_PROJECTION,
     PlayerStrengthProjection,
 )
@@ -117,6 +118,247 @@ def _unique_by_nhl_id(
         ] = row
 
     return result
+
+
+def reconcile_player_strengths_for_current_universe(
+    *,
+    players: Sequence[Player],
+    canonical_strengths: Sequence[
+        PlayerStrengthProjection
+    ],
+    projection_season_id: int,
+) -> tuple[
+    PlayerStrengthProjection,
+    ...,
+]:
+    """
+    Build the effective daily strength universe while
+    preserving the frozen canonical artifact.
+
+    Current-provider additions are represented as transient,
+    explicitly unprojected rows. Missing canonical players
+    remain a hard failure.
+    """
+
+    requested_season = int(
+        projection_season_id
+    )
+
+    if requested_season <= 0:
+        raise ValueError(
+            "Projection season ID must be positive."
+        )
+
+    player_rows = tuple(
+        players
+    )
+
+    strength_rows = tuple(
+        canonical_strengths
+    )
+
+    if not player_rows:
+        raise PlayerStrengthError(
+            "Current Yahoo player universe was empty."
+        )
+
+    if not strength_rows:
+        raise PlayerStrengthError(
+            "Canonical player-strength universe was empty."
+        )
+
+    player_by_key: dict[
+        str,
+        Player,
+    ] = {}
+
+    for player in player_rows:
+        key = str(
+            player.provider_player_key
+        ).strip()
+
+        if not key:
+            raise PlayerStrengthError(
+                "Current Yahoo player contained a blank "
+                "provider player key."
+            )
+
+        if key in player_by_key:
+            raise PlayerStrengthError(
+                "Current Yahoo player universe contained "
+                f"duplicate player key {key!r}."
+            )
+
+        player_type = str(
+            player.position_type
+        ).strip()
+
+        if not player_type:
+            raise PlayerStrengthError(
+                "Current Yahoo player "
+                f"{key!r} contained a blank player type."
+            )
+
+        player_by_key[
+            key
+        ] = player
+
+    strength_by_key: dict[
+        str,
+        PlayerStrengthProjection,
+    ] = {}
+
+    for strength in strength_rows:
+        key = str(
+            strength.provider_player_key
+        ).strip()
+
+        if not key:
+            raise PlayerStrengthError(
+                "Canonical player strength contained a "
+                "blank provider player key."
+            )
+
+        if key in strength_by_key:
+            raise PlayerStrengthError(
+                "Canonical player-strength universe "
+                "contained duplicate player key "
+                f"{key!r}."
+            )
+
+        if (
+            int(
+                strength.projection_season_id
+            )
+            != requested_season
+        ):
+            raise PlayerStrengthError(
+                "Canonical player-strength season "
+                f"mismatch for {key!r}: "
+                f"{strength.projection_season_id} "
+                f"!= {requested_season}."
+            )
+
+        strength_by_key[
+            key
+        ] = strength
+
+    current_keys = set(
+        player_by_key
+    )
+
+    canonical_keys = set(
+        strength_by_key
+    )
+
+    canonical_only = (
+        canonical_keys
+        - current_keys
+    )
+
+    if canonical_only:
+        raise PlayerStrengthError(
+            "Current Yahoo player universe was missing "
+            "canonical player keys: "
+            f"{sorted(canonical_only)!r}."
+        )
+
+    common_keys = (
+        current_keys
+        & canonical_keys
+    )
+
+    for key in sorted(
+        common_keys
+    ):
+        current_type = str(
+            player_by_key[
+                key
+            ].position_type
+        ).strip().upper()
+
+        canonical_type = str(
+            strength_by_key[
+                key
+            ].player_type
+        ).strip().upper()
+
+        if current_type != canonical_type:
+            raise PlayerStrengthError(
+                "Current Yahoo player type did not "
+                "match canonical strength for "
+                f"{key!r}: "
+                f"{current_type!r} != "
+                f"{canonical_type!r}."
+            )
+
+    late_addition_keys = (
+        current_keys
+        - canonical_keys
+    )
+
+    result = list(
+        strength_rows
+    )
+
+    for player in player_rows:
+        key = str(
+            player.provider_player_key
+        ).strip()
+
+        if (
+            key
+            not in late_addition_keys
+        ):
+            continue
+
+        result.append(
+            PlayerStrengthProjection(
+                provider_player_key=key,
+                full_name=(
+                    player.full_name
+                ),
+                projection_season_id=(
+                    requested_season
+                ),
+                player_type=(
+                    player.position_type
+                ),
+                nhl_player_id=None,
+                strength_state=(
+                    STRENGTH_LATE_ADDITION_UNPROJECTED
+                ),
+                projection_source=None,
+                source_state=None,
+                projected_fantasy_points_per_game=(
+                    None
+                ),
+            )
+        )
+
+    result_keys = {
+        row.provider_player_key
+        for row in result
+    }
+
+    if result_keys != current_keys:
+        raise PlayerStrengthError(
+            "Effective player-strength universe did "
+            "not exactly match current Yahoo players."
+        )
+
+    if (
+        len(result)
+        != len(current_keys)
+    ):
+        raise PlayerStrengthError(
+            "Effective player-strength row count did "
+            "not match current Yahoo player count."
+        )
+
+    return tuple(
+        result
+    )
 
 
 def build_player_strength_projections(

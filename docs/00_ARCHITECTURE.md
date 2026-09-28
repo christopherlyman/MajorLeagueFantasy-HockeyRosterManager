@@ -1121,6 +1121,32 @@ This separation keeps the historical/calibration model reproducible without
 making an ordinary daily refresh refetch and recalibrate the entire historical
 projection universe.
 
+### Late Yahoo player additions
+
+Yahoo may add players to the league player universe after the season-scoped
+canonical preseason-strength artifact has been frozen. An ordinary daily
+refresh must not rebuild or mutate the expensive canonical artifact merely
+because the provider universe gained a new player.
+
+Before current-state adjustments are built, the permanent refresh reconciles
+the frozen canonical strength rows against the current Yahoo player universe.
+Existing canonical rows are preserved unchanged. Yahoo-only late additions
+receive transient effective-strength rows with
+`late_addition_unprojected`, no NHL player identity claim, no projection
+source, and no projected fantasy points. Downstream daily valuation therefore
+treats those rows as strength-unavailable rather than silently assigning zero
+or inventing a projection.
+
+The reconciliation remains fail-closed. Duplicate player keys, duplicate
+strength keys, projection-season mismatches, player-type mismatches for an
+existing key, or a canonical player key disappearing from the current Yahoo
+universe abort the refresh. The existing exact player/strength universe gate
+still runs after reconciliation.
+
+These transient rows exist only for the refresh. They are never written back
+to the canonical player-strength artifact. A future intentional canonical
+preseason regeneration may replace them with normal projected strength rows.
+
 ## Permanent Three-Day Daily Refresh
 
 The ordinary NFHL three-day refresh loads the season-scoped canonical player
