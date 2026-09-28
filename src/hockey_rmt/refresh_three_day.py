@@ -7,6 +7,9 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from hockey_rmt.league_instances import (
+    get_league_instance,
+)
 from hockey_rmt.domain.performance_trend import (
     WINDOW_LAST_10,
     WINDOW_LAST_20,
@@ -90,9 +93,7 @@ from hockey_rmt.ui.three_day_snapshot import (
 )
 
 
-LEAGUE_KEY = "477.l.10961"
-MANAGED_TEAM_KEY = "477.l.10961.t.1"
-TEAM_NAME = "Drop The Gloves"
+DEFAULT_LEAGUE_INSTANCE = "nfhl_redraft"
 
 PROJECTION_SEASON_ID = 20262027
 
@@ -432,9 +433,14 @@ def main() -> int:
 
     parser = argparse.ArgumentParser(
         description=(
-            "Refresh the NFHL availability-aware "
-            "three-day decision snapshot."
+            "Refresh an availability-aware "
+            "three-day hockey decision snapshot."
         )
+    )
+
+    parser.add_argument(
+        "--league-instance",
+        default=DEFAULT_LEAGUE_INSTANCE,
     )
 
     parser.add_argument(
@@ -464,6 +470,22 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+
+    league_instance = get_league_instance(
+        args.league_instance
+    )
+
+    if league_instance.provider != "yahoo":
+        raise RuntimeError(
+            f"League instance "
+            f"{league_instance.logical_key!r} uses provider "
+            f"{league_instance.provider!r}; that provider is "
+            "not integrated into the three-day refresh "
+            "entrypoint yet."
+        )
+
+    league_key = league_instance.provider_league_key
+    managed_team_key = league_instance.managed_team_key
 
     required_env = (
         "POSTGRES_DSN",
@@ -520,14 +542,14 @@ def main() -> int:
     league = (
         fetch_league_definition(
             yahoo,
-            LEAGUE_KEY,
+            league_key,
         )
     )
 
     fantasy_teams = (
         fetch_league_teams(
             yahoo,
-            LEAGUE_KEY,
+            league_key,
         )
     )
 
@@ -536,7 +558,7 @@ def main() -> int:
         for row in fantasy_teams
         if (
             row.provider_team_key
-            == MANAGED_TEAM_KEY
+            == managed_team_key
         )
     ]
 
@@ -546,7 +568,7 @@ def main() -> int:
         raise RuntimeError(
             "Expected exactly one managed "
             "Yahoo fantasy team for "
-            f"{MANAGED_TEAM_KEY!r}; "
+            f"{managed_team_key!r}; "
             f"found {len(managed_team_matches)}."
         )
 
@@ -559,7 +581,7 @@ def main() -> int:
     players = (
         fetch_all_players(
             yahoo,
-            LEAGUE_KEY,
+            league_key,
         )
     )
 
@@ -591,7 +613,7 @@ def main() -> int:
     market_states = (
         fetch_all_player_market_states(
             yahoo,
-            LEAGUE_KEY,
+            league_key,
             player_keys,
         )
     )
@@ -599,7 +621,7 @@ def main() -> int:
     percent_rostered = (
         fetch_all_player_percent_rostered(
             yahoo,
-            LEAGUE_KEY,
+            league_key,
             player_keys,
         )
     )
@@ -702,13 +724,13 @@ def main() -> int:
                 args.base_date
             ),
             managed_team_key=(
-                MANAGED_TEAM_KEY
+                managed_team_key
             ),
             league_name=(
                 league.league_name
             ),
             team_name=(
-                TEAM_NAME
+                managed_team.name
             ),
             model_label=(
                 MODEL_LABEL
