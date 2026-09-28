@@ -887,3 +887,277 @@ def build_player_strength_projections(
     return tuple(
         result
     )
+
+def rebind_player_strengths_to_current_provider(
+    *,
+    players: Sequence[Player],
+    canonical_strengths: Sequence[
+        PlayerStrengthProjection
+    ],
+    identity_resolutions: Sequence[
+        PlayerIdentityResolution
+    ],
+    projection_season_id: int,
+) -> tuple[
+    PlayerStrengthProjection,
+    ...,
+]:
+    """
+    Re-key frozen canonical strengths to the current provider.
+
+    NHL playerId is the cross-provider identity. Provider keys
+    remain provider-local runtime identifiers.
+    """
+    requested_season = int(
+        projection_season_id
+    )
+
+    player_rows = tuple(players)
+    strength_rows = tuple(canonical_strengths)
+    identity_rows = tuple(identity_resolutions)
+
+    player_by_key: dict[str, Player] = {}
+
+    for player in player_rows:
+        key = str(
+            player.provider_player_key
+        ).strip()
+
+        if not key:
+            raise PlayerStrengthError(
+                "Current provider player contained a "
+                "blank provider player key."
+            )
+
+        if key in player_by_key:
+            raise PlayerStrengthError(
+                "Current provider player universe "
+                f"contained duplicate player key {key!r}."
+            )
+
+        player_by_key[key] = player
+
+    identity_by_key: dict[
+        str,
+        PlayerIdentityResolution,
+    ] = {}
+
+    for identity in identity_rows:
+        key = str(
+            identity.provider_player_key
+        ).strip()
+
+        if not key:
+            raise PlayerStrengthError(
+                "Player identity resolution contained "
+                "a blank provider player key."
+            )
+
+        if key in identity_by_key:
+            raise PlayerStrengthError(
+                "Duplicate player identity resolution "
+                f"for provider key {key!r}."
+            )
+
+        if key not in player_by_key:
+            raise PlayerStrengthError(
+                "Player identity resolution referenced "
+                "an unknown current-provider player "
+                f"{key!r}."
+            )
+
+        identity_by_key[key] = identity
+
+    if set(identity_by_key) != set(player_by_key):
+        raise PlayerStrengthError(
+            "Player identity resolution universe did "
+            "not exactly match current-provider players."
+        )
+
+    canonical_by_nhl_id: dict[
+        int,
+        PlayerStrengthProjection,
+    ] = {}
+
+    for strength in strength_rows:
+        if (
+            int(
+                strength.projection_season_id
+            )
+            != requested_season
+        ):
+            raise PlayerStrengthError(
+                "Canonical player-strength season did "
+                "not match requested projection season."
+            )
+
+        if strength.nhl_player_id is None:
+            continue
+
+        nhl_player_id = int(
+            strength.nhl_player_id
+        )
+
+        if nhl_player_id in canonical_by_nhl_id:
+            raise PlayerStrengthError(
+                "Canonical player-strength universe "
+                "contained duplicate NHL playerId "
+                f"{nhl_player_id!r}."
+            )
+
+        canonical_by_nhl_id[
+            nhl_player_id
+        ] = strength
+
+    result: list[
+        PlayerStrengthProjection
+    ] = []
+
+    assigned_nhl_ids: set[int] = set()
+
+    for player in player_rows:
+        key = str(
+            player.provider_player_key
+        ).strip()
+
+        identity = identity_by_key[key]
+
+        resolution_state = str(
+            identity.resolution_state
+        ).strip()
+
+        player_type = str(
+            player.position_type
+        ).strip()
+
+        if not player_type:
+            raise PlayerStrengthError(
+                "Current provider player contained "
+                "a blank player type."
+            )
+
+        if resolution_state == "unresolved":
+            if identity.nhl_player_id is not None:
+                raise PlayerStrengthError(
+                    "Unresolved player identity "
+                    "contained an NHL playerId."
+                )
+
+            result.append(
+                PlayerStrengthProjection(
+                    provider_player_key=key,
+                    full_name=player.full_name,
+                    projection_season_id=(
+                        requested_season
+                    ),
+                    player_type=player_type,
+                    nhl_player_id=None,
+                    strength_state=(
+                        STRENGTH_IDENTITY_UNRESOLVED
+                    ),
+                    projection_source=None,
+                    source_state=None,
+                    projected_fantasy_points_per_game=(
+                        None
+                    ),
+                )
+            )
+
+            continue
+
+        if (
+            resolution_state != "resolved"
+            or identity.nhl_player_id is None
+        ):
+            raise PlayerStrengthError(
+                "Unexpected player identity "
+                f"resolution state {resolution_state!r}."
+            )
+
+        nhl_player_id = int(
+            identity.nhl_player_id
+        )
+
+        if nhl_player_id in assigned_nhl_ids:
+            raise PlayerStrengthError(
+                "NHL playerId was assigned to more "
+                "than one current-provider player: "
+                f"{nhl_player_id!r}."
+            )
+
+        assigned_nhl_ids.add(
+            nhl_player_id
+        )
+
+        canonical = canonical_by_nhl_id.get(
+            nhl_player_id
+        )
+
+        if canonical is None:
+            result.append(
+                PlayerStrengthProjection(
+                    provider_player_key=key,
+                    full_name=player.full_name,
+                    projection_season_id=(
+                        requested_season
+                    ),
+                    player_type=player_type,
+                    nhl_player_id=nhl_player_id,
+                    strength_state=(
+                        STRENGTH_NO_PROJECTION
+                    ),
+                    projection_source=None,
+                    source_state=None,
+                    projected_fantasy_points_per_game=(
+                        None
+                    ),
+                )
+            )
+
+            continue
+
+        canonical_type = str(
+            canonical.player_type
+        ).strip()
+
+        if canonical_type != player_type:
+            raise PlayerStrengthError(
+                "Current-provider player type did not "
+                "match canonical player strength for "
+                f"NHL playerId {nhl_player_id!r}: "
+                f"{player_type!r} != "
+                f"{canonical_type!r}."
+            )
+
+        result.append(
+            PlayerStrengthProjection(
+                provider_player_key=key,
+                full_name=player.full_name,
+                projection_season_id=(
+                    requested_season
+                ),
+                player_type=player_type,
+                nhl_player_id=nhl_player_id,
+                strength_state=(
+                    canonical.strength_state
+                ),
+                projection_source=(
+                    canonical.projection_source
+                ),
+                source_state=(
+                    canonical.source_state
+                ),
+                projected_fantasy_points_per_game=(
+                    canonical
+                    .projected_fantasy_points_per_game
+                ),
+            )
+        )
+
+    if len(result) != len(player_rows):
+        raise PlayerStrengthError(
+            "Rebound player-strength count did not "
+            "match current-provider player count."
+        )
+
+    return tuple(result)
