@@ -1,6 +1,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
+
+
+@dataclass(frozen=True)
+class LeagueOperationalConfig:
+    """Season-specific rules absent from provider metadata."""
+
+    scoring_format: str
+    roster_period: str
+    lineup_deadline: str
+
+    start_date: date
+    end_date: date
+
+    max_weekly_adds: int | None
+    waiver_type: str
+    waiver_rule: str
+    waiver_days: int | None
+    uses_faab: bool
+
+    playoff_teams: int | None
+    playoff_start_week: int | None
 
 
 @dataclass(frozen=True)
@@ -14,6 +36,7 @@ class LeagueInstanceConfig:
     provider_league_key: str
     managed_team_key: str
     competition_level: str | None = None
+    operational: LeagueOperationalConfig | None = None
 
 
 _LEAGUE_INSTANCES = {
@@ -33,6 +56,20 @@ _LEAGUE_INSTANCES = {
         provider_league_key="12090",
         managed_team_key="63197",
         competition_level="D3",
+        operational=LeagueOperationalConfig(
+            scoring_format="head_to_head_points",
+            roster_period="daily",
+            lineup_deadline="game_start",
+            start_date=date(2026, 9, 29),
+            end_date=date(2027, 4, 10),
+            max_weekly_adds=7,
+            waiver_type="rolling_priority",
+            waiver_rule="all_players_after_game_start",
+            waiver_days=1,
+            uses_faab=False,
+            playoff_teams=6,
+            playoff_start_week=24,
+        ),
     ),
 }
 
