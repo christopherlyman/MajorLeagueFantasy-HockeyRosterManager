@@ -74,29 +74,34 @@ def resolve_player_identities(
     PlayerIdentityResolution,
     ...,
 ]:
-    canonical_team_by_yahoo_key = {}
+    canonical_team_by_source_key = {}
 
     for row in team_crosswalk:
+        source_key = (
+            row.source_provider,
+            row.source_team_key,
+        )
+
         if (
-            row.source_team_key
-            in canonical_team_by_yahoo_key
+            source_key
+            in canonical_team_by_source_key
         ):
             raise PlayerIdentityError(
-                "Duplicate Yahoo team key in "
+                "Duplicate provider team key in "
                 "team crosswalk: "
-                f"{row.source_team_key!r}."
+                f"{source_key!r}."
             )
 
-        canonical_team_by_yahoo_key[
-            row.source_team_key
+        canonical_team_by_source_key[
+            source_key
         ] = row.canonical_team_abbr
 
-    yahoo_by_name = defaultdict(
+    provider_by_name = defaultdict(
         list
     )
 
     for player in players:
-        yahoo_by_name[
+        provider_by_name[
             normalize_player_name(
                 player.full_name
             )
@@ -147,26 +152,68 @@ def resolve_player_identities(
         explicit_nhl_player_ids or {}
     )
 
-    def yahoo_team(
+    def provider_team(
         player: Player,
     ) -> str:
-        if not player.nhl_team_key:
-            return ""
-
-        return (
-            canonical_team_by_yahoo_key.get(
-                player.nhl_team_key,
-                "",
+        if player.nhl_team_key:
+            canonical = (
+                canonical_team_by_source_key.get(
+                    (
+                        player.provider,
+                        player.nhl_team_key,
+                    )
+                )
             )
-            or ""
-        )
 
-    def yahoo_position(
+            if canonical:
+                return str(
+                    canonical
+                ).strip().upper()
+
+        return str(
+            player.nhl_team_abbr
+            or ""
+        ).strip().upper()
+
+    def provider_positions(
         player: Player,
-    ) -> str:
-        return normalize_position(
+    ) -> frozenset[str]:
+        identity_positions = {
+            "C",
+            "L",
+            "R",
+            "D",
+            "G",
+        }
+
+        primary = normalize_position(
             player.primary_position
         )
+
+        # Preserve the historical single-primary-position
+        # behavior whenever the provider gives us a normal
+        # NHL position.
+        if primary in identity_positions:
+            return frozenset(
+                (primary,)
+            )
+
+        result = set()
+
+        for raw_position in (
+            player.eligible_positions
+        ):
+            normalized = normalize_position(
+                raw_position
+            )
+
+            if (
+                normalized
+                in identity_positions
+            ):
+                result.add(normalized)
+
+        return frozenset(result)
 
     def assign(
         player: Player,
@@ -179,7 +226,7 @@ def resolve_player_identities(
 
         if provider_key in resolved:
             raise PlayerIdentityError(
-                "Yahoo player was assigned "
+                "Provider player was assigned "
                 "more than once: "
                 f"{provider_key!r}."
             )
@@ -190,7 +237,7 @@ def resolve_player_identities(
         ):
             raise PlayerIdentityError(
                 "NHL playerId was assigned "
-                "to more than one Yahoo player: "
+                "to more than one provider player: "
                 f"{nhl_player.nhl_player_id!r}."
             )
 
@@ -238,7 +285,7 @@ def resolve_player_identities(
         if player is None:
             raise PlayerIdentityError(
                 "Explicit identity override referenced "
-                "unknown Yahoo player key "
+                "unknown provider player key "
                 f"{provider_player_key!r}."
             )
 
@@ -260,11 +307,11 @@ def resolve_player_identities(
         )
 
     for name_key in sorted(
-        yahoo_by_name
+        provider_by_name
     ):
-        yahoo_group = [
+        provider_group = [
             player
-            for player in yahoo_by_name[
+            for player in provider_by_name[
                 name_key
             ]
             if (
@@ -273,7 +320,7 @@ def resolve_player_identities(
             )
         ]
 
-        if not yahoo_group:
+        if not provider_group:
             continue
 
         nhl_group = list(
@@ -284,19 +331,19 @@ def resolve_player_identities(
         )
 
         if (
-            len(yahoo_group) == 1
+            len(provider_group) == 1
             and len(nhl_group) == 1
         ):
             assign(
-                yahoo_group[0],
+                provider_group[0],
                 nhl_group[0],
                 "unique_name",
             )
 
             continue
 
-        remaining_yahoo = list(
-            yahoo_group
+        remaining_provider = list(
+            provider_group
         )
 
         remaining_nhl = {
@@ -313,21 +360,21 @@ def resolve_player_identities(
             changed = False
 
             for player in list(
-                remaining_yahoo
+                remaining_provider
             ):
-                team = yahoo_team(
+                team = provider_team(
                     player
                 )
 
-                position = (
-                    yahoo_position(
+                positions = (
+                    provider_positions(
                         player
                     )
                 )
 
                 if (
                     not team
-                    or not position
+                    or not positions
                 ):
                     continue
 
@@ -336,12 +383,15 @@ def resolve_player_identities(
                     for candidate
                     in remaining_nhl.values()
                     if (
-                        candidate.team_abbr
+                        str(
+                            candidate.team_abbr
+                            or ""
+                        ).strip().upper()
                         == team
                         and normalize_position(
                             candidate.position
                         )
-                        == position
+                        in positions
                     )
                 ]
 
@@ -361,7 +411,7 @@ def resolve_player_identities(
                     "team_position",
                 )
 
-                remaining_yahoo.remove(
+                remaining_provider.remove(
                     player
                 )
 
@@ -380,28 +430,16 @@ def resolve_player_identities(
             changed = False
 
             for player in list(
-                remaining_yahoo
+                remaining_provider
             ):
-                position = (
-                    yahoo_position(
+                positions = (
+                    provider_positions(
                         player
                     )
                 )
 
-                if not position:
+                if not positions:
                     continue
-
-                yahoo_same_position = [
-                    other
-                    for other
-                    in remaining_yahoo
-                    if (
-                        yahoo_position(
-                            other
-                        )
-                        == position
-                    )
-                ]
 
                 nhl_same_position = [
                     candidate
@@ -411,16 +449,12 @@ def resolve_player_identities(
                         normalize_position(
                             candidate.position
                         )
-                        == position
+                        in positions
                     )
                 ]
 
                 if (
                     len(
-                        yahoo_same_position
-                    )
-                    != 1
-                    or len(
                         nhl_same_position
                     )
                     != 1
@@ -431,13 +465,39 @@ def resolve_player_identities(
                     nhl_same_position[0]
                 )
 
+                candidate_position = (
+                    normalize_position(
+                        candidate.position
+                    )
+                )
+
+                provider_same_position = [
+                    other
+                    for other
+                    in remaining_provider
+                    if (
+                        candidate_position
+                        in provider_positions(
+                            other
+                        )
+                    )
+                ]
+
+                if (
+                    len(
+                        provider_same_position
+                    )
+                    != 1
+                ):
+                    continue
+
                 assign(
                     player,
                     candidate,
                     "position_within_name_group",
                 )
 
-                remaining_yahoo.remove(
+                remaining_provider.remove(
                     player
                 )
 
@@ -456,21 +516,21 @@ def resolve_player_identities(
             changed = False
 
             for player in list(
-                remaining_yahoo
+                remaining_provider
             ):
-                team = yahoo_team(
+                team = provider_team(
                     player
                 )
 
                 if not team:
                     continue
 
-                yahoo_same_team = [
+                provider_same_team = [
                     other
                     for other
-                    in remaining_yahoo
+                    in remaining_provider
                     if (
-                        yahoo_team(
+                        provider_team(
                             other
                         )
                         == team
@@ -482,14 +542,17 @@ def resolve_player_identities(
                     for candidate
                     in remaining_nhl.values()
                     if (
-                        candidate.team_abbr
+                        str(
+                            candidate.team_abbr
+                            or ""
+                        ).strip().upper()
                         == team
                     )
                 ]
 
                 if (
                     len(
-                        yahoo_same_team
+                        provider_same_team
                     )
                     != 1
                     or len(
@@ -509,7 +572,7 @@ def resolve_player_identities(
                     "team_within_name_group",
                 )
 
-                remaining_yahoo.remove(
+                remaining_provider.remove(
                     player
                 )
 
@@ -521,11 +584,11 @@ def resolve_player_identities(
 
         # Final safe elimination.
         if (
-            len(remaining_yahoo) == 1
+            len(remaining_provider) == 1
             and len(remaining_nhl) == 1
         ):
             player = (
-                remaining_yahoo[0]
+                remaining_provider[0]
             )
 
             candidate = next(
@@ -540,7 +603,7 @@ def resolve_player_identities(
                 "one_to_one_elimination",
             )
 
-            remaining_yahoo.clear()
+            remaining_provider.clear()
             remaining_nhl.clear()
 
     result = []
@@ -574,7 +637,7 @@ def resolve_player_identities(
     if len(result) != len(players):
         raise PlayerIdentityError(
             "Player identity result count "
-            "did not match Yahoo player count."
+            "did not match provider player count."
         )
 
     return tuple(result)
