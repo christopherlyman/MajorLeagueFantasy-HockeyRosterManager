@@ -11,6 +11,19 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 
+from hockey_rmt.league_instances import (
+    get_league_instance,
+)
+from hockey_rmt.providers.fleaflicker.client import (
+    FleaflickerClient,
+)
+from hockey_rmt.providers.fleaflicker.roster import (
+    fetch_team_roster,
+)
+from hockey_rmt.providers.fleaflicker.teams import (
+    fetch_league_teams,
+)
+
 from hockey_rmt.services.lineup_optimizer import (
     LineupOptimizerError,
     build_daily_lineup_decisions,
@@ -540,14 +553,174 @@ def _market_reason_label(
 
 
 st.set_page_config(
-    page_title="NFHL Roster Manager",
+    page_title="Hockey Roster Manager",
     page_icon="🏒",
     layout="wide",
 )
 
 st.title(
-    "NFHL Roster Manager"
+    "Hockey Roster Manager"
 )
+
+
+LEAGUE_OPTIONS = (
+    "NFHL",
+    "OTH Redraft",
+    "OTH Keeper",
+)
+
+if hasattr(
+    st,
+    "segmented_control",
+):
+    league_view = st.segmented_control(
+        "League",
+        options=LEAGUE_OPTIONS,
+        default="NFHL",
+        label_visibility="collapsed",
+    )
+else:
+    league_view = st.radio(
+        "League",
+        options=LEAGUE_OPTIONS,
+        index=0,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+
+if league_view == "OTH Keeper":
+    st.caption(
+        "OTH Keeper ? Fleaflicker"
+    )
+
+    st.info(
+        "OTH Keeper is reserved in the unified "
+        "Hockey Roster Manager. Its current "
+        "Fleaflicker league ID and managed-team ID "
+        "still need to be configured."
+    )
+
+    st.stop()
+
+
+if league_view == "OTH Redraft":
+    instance = get_league_instance(
+        "oth_redraft"
+    )
+
+    try:
+        fleaflicker_client = (
+            FleaflickerClient()
+        )
+
+        fleaflicker_teams = (
+            fetch_league_teams(
+                fleaflicker_client,
+                instance.provider_league_key,
+                managed_team_id=(
+                    instance.managed_team_key
+                ),
+            )
+        )
+
+        fleaflicker_team = next(
+            team
+            for team in fleaflicker_teams
+            if team.is_owned_by_current_user
+        )
+
+        fleaflicker_roster = (
+            fetch_team_roster(
+                fleaflicker_client,
+                instance.provider_league_key,
+                instance.managed_team_key,
+                season=instance.season_year,
+            )
+        )
+
+    except Exception as exc:
+        st.error(
+            "Fleaflicker live roster refresh "
+            f"failed: {exc}"
+        )
+        st.stop()
+
+    level = (
+        f" ? {instance.competition_level}"
+        if instance.competition_level
+        else ""
+    )
+
+    st.caption(
+        f"{instance.display_name}"
+        f"{level}"
+        f" ? {fleaflicker_team.name}"
+        " ? Live Fleaflicker"
+    )
+
+    st.header(
+        "Current Roster"
+    )
+
+    summary = st.columns(3)
+
+    summary[0].metric(
+        "Rostered",
+        len(fleaflicker_roster),
+    )
+
+    summary[1].metric(
+        "Waiver Priority",
+        (
+            fleaflicker_team.waiver_priority
+            if fleaflicker_team.waiver_priority
+            is not None
+            else "?"
+        ),
+    )
+
+    summary[2].metric(
+        "Competition",
+        (
+            instance.competition_level
+            or "?"
+        ),
+    )
+
+    roster_table = []
+
+    for row in fleaflicker_roster:
+        roster_table.append(
+            {
+                "Slot": row.roster_slot,
+                "Player": row.full_name,
+                "Pos": "/".join(
+                    row.eligible_positions
+                ),
+                "NHL": (
+                    row.nhl_team_abbr
+                    or "?"
+                ),
+                "Status": (
+                    row.status
+                    or ""
+                ),
+            }
+        )
+
+    st.table(
+        roster_table
+    )
+
+    st.info(
+        "Daily projections, START/BENCH/HOLD, "
+        "and free-agent rankings will use the "
+        "shared hockey analytics pipeline as the "
+        "Fleaflicker runtime cutover is completed."
+    )
+
+    st.stop()
 
 
 snapshot_path = (
@@ -675,12 +848,6 @@ else:
                     roster_positions
                 ),
                 day_key=day_key,
-                goalie_start_model_active=(
-                    snapshot.get(
-                        "goalie_start_model_active"
-                    )
-                    is True
-                ),
             )
         )
 
