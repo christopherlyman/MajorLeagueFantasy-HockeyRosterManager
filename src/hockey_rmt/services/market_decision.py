@@ -562,6 +562,45 @@ def _validate_weekly_adds(
     )
 
 
+def _known_undroppable_state(
+    *,
+    is_undroppable_by_player_key: Mapping[
+        str,
+        bool | None,
+    ],
+    player_key: str,
+) -> bool:
+    if (
+        player_key
+        not in is_undroppable_by_player_key
+    ):
+        raise MarketDecisionError(
+            "Missing is_undroppable state for "
+            f"managed player {player_key!r}."
+        )
+
+    state = (
+        is_undroppable_by_player_key[
+            player_key
+        ]
+    )
+
+    if state is None:
+        raise MarketDecisionError(
+            "Unknown is_undroppable state for "
+            f"managed player {player_key!r}."
+        )
+
+    if not isinstance(state, bool):
+        raise MarketDecisionError(
+            "Invalid is_undroppable state for "
+            f"managed player {player_key!r}: "
+            f"{state!r}."
+        )
+
+    return state
+
+
 def build_market_decisions(
     *,
     rows: Sequence[
@@ -570,7 +609,7 @@ def build_market_decisions(
     roster_positions,
     is_undroppable_by_player_key: Mapping[
         str,
-        bool,
+        bool | None,
     ],
     max_weekly_adds: int | None,
     weekly_adds_used: int | None,
@@ -694,19 +733,11 @@ def build_market_decisions(
             row
         )
 
-        if key not in (
-            is_undroppable_by_player_key
-        ):
-            raise MarketDecisionError(
-                "Missing is_undroppable state for "
-                f"managed player {key!r}."
-            )
-
-        if (
-            is_undroppable_by_player_key[
-                key
-            ]
-            is True
+        if _known_undroppable_state(
+            is_undroppable_by_player_key=(
+                is_undroppable_by_player_key
+            ),
+            player_key=key,
         ):
             continue
 

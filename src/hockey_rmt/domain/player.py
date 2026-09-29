@@ -22,4 +22,4 @@ class Player:
     status: str | None
     status_full: str | None
 
-    is_undroppable: bool
+    is_undroppable: bool | None
