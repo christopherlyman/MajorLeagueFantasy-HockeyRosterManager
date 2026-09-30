@@ -24,10 +24,6 @@ from hockey_rmt.providers.fleaflicker.teams import (
     fetch_league_teams,
 )
 
-from hockey_rmt.services.lineup_optimizer import (
-    LineupOptimizerError,
-    build_daily_lineup_decisions,
-)
 from hockey_rmt.ui.three_day_snapshot import (
     load_three_day_snapshot,
 )
@@ -204,51 +200,7 @@ def _percent_rostered(
 
     return f"{value}%"
 
-def _market_bucket(
-    row: dict,
-) -> str:
-    if (
-        row.get(
-            "is_on_managed_team"
-        )
-        is True
-    ):
-        return "My Roster"
 
-    state = str(
-        row.get(
-            "market_state"
-        )
-        or ""
-    ).strip().casefold()
-
-    if state == "free_agent":
-        return "Free Agents"
-
-    if state in {
-        "waiver",
-        "waivers",
-    }:
-        return "Waivers"
-
-    if state:
-        return "Other Teams"
-
-    return "Unknown"
-
-def _daily_rank(
-    day: dict,
-):
-    value = day.get(
-        "daily_rank"
-    )
-
-    if value is None:
-        value = day.get(
-            "rank"
-        )
-
-    return value
 
 
 def _daily_expected(
@@ -266,37 +218,6 @@ def _daily_expected(
     return value
 
 
-def _day_cell(
-    day: dict,
-) -> str:
-    state = str(
-        day.get(
-            "schedule_state",
-            "",
-        )
-    )
-
-    if state == "off":
-        return "OFF"
-
-    rank = _daily_rank(
-        day
-    )
-
-    expected = _daily_expected(
-        day
-    )
-
-    if (
-        rank is None
-        or expected is None
-    ):
-        return "—"
-
-    return (
-        f"{int(rank)} "
-        f"({float(expected):.2f})"
-    )
 
 
 def _format_game_time(
@@ -424,132 +345,12 @@ def _today_game(
     return "—"
 
 
-def _sort_rank(
-    row: dict,
-    choice: str,
-):
-    if choice == "Today Rank":
-        rank = _daily_rank(
-            row.get(
-                "today",
-                {},
-            )
-        )
-
-    elif choice == "Tomorrow Rank":
-        rank = _daily_rank(
-            row.get(
-                "tomorrow",
-                {},
-            )
-        )
-
-    elif choice == "Day+2 Rank":
-        rank = _daily_rank(
-            row.get(
-                "day_plus_2",
-                {},
-            )
-        )
-
-    else:
-        rank = row.get(
-            "three_day_rank"
-        )
-
-    if rank is None:
-        return 10**9
-
-    return int(
-        rank
-    )
 
 
 
-def _decision_reason_label(
-    reason: str,
-) -> str:
-    labels = {
-        "optimal_daily_lineup": (
-            "Best legal lineup"
-        ),
-        (
-            "optimal_daily_lineup_"
-            "availability_uncertain"
-        ): (
-            "Best legal lineup; "
-            "availability uncertain"
-        ),
-        "slot_congestion": (
-            "Better option fills available slot"
-        ),
-        "off_day": "No game",
-        "player_unavailable": (
-            "Unavailable"
-        ),
-        "schedule_unresolved": (
-            "Schedule unresolved"
-        ),
-        "no_positive_projection": (
-            "No usable positive projection"
-        ),
-        "goalie_start_model_pending": (
-            "Goalie start model pending"
-        ),
-        "goalie_start_likely": (
-            "Goalie start likely; awaiting confirmation"
-        ),
-        "goalie_start_unconfirmed": (
-            "Goalie start unconfirmed"
-        ),
-        "goalie_start_unknown": (
-            "Goalie starter unknown"
-        ),
-        "goalie_start_state_unresolved": (
-            "Goalie start state unresolved"
-        ),
-        "no_same_day_action": (
-            "No same-day action"
-        ),
-    }
-
-    return labels.get(
-        reason,
-        reason.replace(
-            "_",
-            " ",
-        ).capitalize(),
-    )
 
 
 
-def _market_reason_label(
-    reason: str,
-) -> str:
-    labels = {
-        (
-            "per_game_upgrade_and_"
-            "usable_lineup_gain"
-        ): (
-            "Per-game upgrade + "
-            "usable lineup gain"
-        ),
-        (
-            "near_term_schedule_or_"
-            "positional_fit_gain"
-        ): (
-            "Near-term schedule / "
-            "positional fit"
-        ),
-    }
-
-    return labels.get(
-        reason,
-        reason.replace(
-            "_",
-            " ",
-        ).capitalize(),
-    )
 
 
 st.set_page_config(
@@ -766,700 +567,582 @@ if model_label:
 
 
 st.subheader(
-    "3-Day Decision View"
+    "3-Day Projections"
+)
+
+st.caption(
+    "Compare projected fantasy points directly. "
+    "This view does not choose an add/drop transaction for you."
 )
 
 
 rows = list(
     snapshot.get(
         "rows",
-        []
+        [],
     )
 )
 
 
-st.subheader(
-    "Lineup Recommendations"
-)
-
-roster_positions = snapshot.get(
-    "roster_positions"
-)
-
-managed_rows = [
-    row
-    for row in rows
+def _numeric_value(
+    value,
+) -> float | None:
     if (
-        row.get(
-            "is_on_managed_team"
+        value is None
+        or isinstance(
+            value,
+            bool,
         )
-        is True
-    )
-]
-
-if (
-    not isinstance(
-        roster_positions,
-        list,
-    )
-    or not roster_positions
-):
-    st.caption(
-        "Lineup recommendations will activate "
-        "after the next live refresh writes "
-        "Yahoo roster-slot metadata."
-    )
-
-elif not managed_rows:
-    st.info(
-        "Yahoo has not populated Drop The Gloves "
-        "with a managed roster yet. "
-        "Lineup recommendations will activate "
-        "automatically when roster ownership "
-        "appears in the Yahoo feed."
-    )
-
-else:
-    recommendation_day = st.selectbox(
-        "Recommendation day",
-        (
-            "Today",
-            "Tomorrow",
-            "Day+2",
-        ),
-        key=(
-            "lineup_recommendation_day"
-        ),
-    )
-
-    day_key = {
-        "Today": "today",
-        "Tomorrow": "tomorrow",
-        "Day+2": "day_plus_2",
-    }[
-        recommendation_day
-    ]
+    ):
+        return None
 
     try:
-        lineup_decisions = (
-            build_daily_lineup_decisions(
-                rows=rows,
-                roster_positions=(
-                    roster_positions
-                ),
-                day_key=day_key,
-            )
+        return float(
+            value
         )
+    except (
+        TypeError,
+        ValueError,
+    ):
+        return None
 
-    except LineupOptimizerError as exc:
-        st.error(
-            "Unable to build lineup "
-            f"recommendations: {exc}"
+
+def _day_projection_value(
+    row: dict,
+    day_key: str,
+) -> float | None:
+    day = (
+        row.get(
+            day_key
         )
-
-    else:
-        source_by_key = {
-            str(
-                row.get(
-                    "provider_player_key",
-                    "",
-                )
-            ): row
-            for row in managed_rows
-        }
-
-        lineup_table = []
-
-        for decision in lineup_decisions:
-            source = source_by_key[
-                decision.provider_player_key
-            ]
-
-            lineup_table.append(
-                {
-                    "Player": (
-                        decision.full_name
-                    ),
-                    "Action": (
-                        decision.action
-                    ),
-                    "Slot": (
-                        decision.assigned_position
-                        or "—"
-                    ),
-                    "Eligible Pos.": (
-                        _eligible_positions(
-                            source
-                        )
-                    ),
-                    "Status": (
-                        _status(
-                            source
-                        )
-                    ),
-                    "Projected": (
-                        (
-                            f"{decision.expected_points:.2f}"
-                        )
-                        if (
-                            decision.expected_points
-                            is not None
-                        )
-                        else "—"
-                    ),
-                    "Why": (
-                        _decision_reason_label(
-                            decision.reason
-                        )
-                    ),
-                }
-            )
-
-        st.dataframe(
-            lineup_table,
-            height=max(120, 35 * (len(lineup_table) + 1) + 8),
-            hide_index=True,
-            use_container_width=True,
-            column_order=(
-                "Player",
-                "Action",
-                "Slot",
-                "Eligible Pos.",
-                "Status",
-                "Projected",
-                "Why",
-            ),
-        )
-
-        st.caption(
-            "START/BENCH uses the full legal lineup. "
-            "Goalies enter START/BENCH only when the "
-            "goalie-start model is active and the "
-            "starter is confirmed; likely, "
-            "unconfirmed, and unknown goalies "
-            "remain HOLD."
-        )
-
-
-st.subheader(
-    "Market Recommendations"
-)
-
-transaction_context = snapshot.get(
-    "transaction_context"
-)
-
-market_recommendations = snapshot.get(
-    "market_recommendations"
-)
-
-if (
-    not isinstance(
-        transaction_context,
-        dict,
-    )
-    or not isinstance(
-        market_recommendations,
-        list,
-    )
-):
-    st.caption(
-        "Market recommendations will activate "
-        "after the next live refresh writes "
-        "Yahoo transaction metadata."
+        or {}
     )
 
-else:
-    market_state = str(
-        transaction_context.get(
-            "state",
+    state = str(
+        day.get(
+            "schedule_state",
             "",
         )
+    ).strip().casefold()
+
+    if state == "off":
+        return 0.0
+
+    return _numeric_value(
+        _daily_expected(
+            day
+        )
     )
 
-    if (
-        market_state
-        == "waiting_for_managed_roster"
-    ):
-        st.info(
-            "Yahoo has not populated "
-            "Drop The Gloves yet. "
-            "ADD / DROP / STREAM recommendations "
-            "will activate automatically once "
-            "the roster appears."
+
+def _projection_cell(
+    row: dict,
+    day_key: str,
+) -> str:
+    day = (
+        row.get(
+            day_key
         )
+        or {}
+    )
 
-    elif (
-        market_state
-        == "weekly_add_limit_reached"
-    ):
-        st.warning(
-            "Weekly add limit reached. "
-            "Transaction recommendation: HOLD."
+    state = str(
+        day.get(
+            "schedule_state",
+            "",
         )
+    ).strip().casefold()
 
-    elif (
-        market_state
-        == "weekly_add_usage_unknown"
-    ):
-        st.warning(
-            "Yahoo did not provide current weekly "
-            "add usage, so transaction advice is "
-            "being withheld."
+    if state == "off":
+        return "OFF"
+
+    value = _day_projection_value(
+        row,
+        day_key,
+    )
+
+    if value is None:
+        return "?"
+
+    return f"{value:.2f}"
+
+
+def _three_day_value(
+    row: dict,
+) -> float | None:
+    return _numeric_value(
+        row.get(
+            "three_day_expected_points"
         )
-
-    elif market_recommendations:
-        market_table = []
-
-        for recommendation in (
-            market_recommendations
-        ):
-            rostered = recommendation.get(
-                "add_percent_rostered"
-            )
-
-            market_table.append(
-                {
-                    "Action": (
-                        recommendation.get(
-                            "action"
-                        )
-                    ),
-                    "Add": (
-                        recommendation.get(
-                            "add_player_name"
-                        )
-                    ),
-                    "Drop": (
-                        recommendation.get(
-                            "drop_player_name"
-                        )
-                    ),
-                    "3-Day Gain": (
-                        f"{float(recommendation.get('usable_three_day_gain', 0.0)):+.2f}"
-                    ),
-                    "Add 3D": (
-                        f"{float(recommendation.get('add_three_day_expected_points', 0.0)):.2f}"
-                    ),
-                    "Drop 3D": (
-                        f"{float(recommendation.get('drop_three_day_expected_points', 0.0)):.2f}"
-                    ),
-                    "% Ros": (
-                        (
-                            f"{int(rostered)}%"
-                        )
-                        if isinstance(
-                            rostered,
-                            int,
-                        )
-                        and not isinstance(
-                            rostered,
-                            bool,
-                        )
-                        else "—"
-                    ),
-                    "Why": (
-                        _market_reason_label(
-                            str(
-                                recommendation.get(
-                                    "reason",
-                                    "",
-                                )
-                            )
-                        )
-                    ),
-                }
-            )
-
-        st.dataframe(
-            market_table,
-            height=max(120, 35 * (len(market_table) + 1) + 8),
-            hide_index=True,
-            use_container_width=True,
-            column_order=(
-                "Action",
-                "Add",
-                "Drop",
-                "3-Day Gain",
-                "Add 3D",
-                "Drop 3D",
-                "% Ros",
-                "Why",
-            ),
-        )
-
-        remaining = (
-            transaction_context.get(
-                "weekly_adds_remaining"
-            )
-        )
-
-        skipped = (
-            transaction_context.get(
-                "waiver_candidates_skipped",
-                0,
-            )
-        )
-
-        st.caption(
-            "Recommendations optimize usable "
-            "three-day skater lineup value. "
-            f"Weekly adds remaining: "
-            f"{remaining if remaining is not None else 'unlimited/unknown'}"
-            f". Waiver skaters held out of "
-            f"immediate-add evaluation: {skipped}."
-        )
-
-    else:
-        st.info(
-            "Transaction recommendation: HOLD. "
-            "No immediately available skater "
-            "improves usable three-day lineup "
-            "value enough to clear the action floor."
-        )
+    )
 
 
-metrics = st.columns(
-    4
-)
+def _three_day_cell(
+    row: dict,
+) -> str:
+    value = _three_day_value(
+        row
+    )
 
-metrics[0].metric(
-    "Players",
-    len(rows),
-)
+    if value is None:
+        return "?"
+
+    return f"{value:.2f}"
 
 
-for index, (
-    label,
-    key,
-) in enumerate(
-    (
+def _position_label(
+    row: dict,
+) -> str:
+    if _player_type(
+        row
+    ) == "G":
+        return "G"
+
+    raw = row.get(
+        "eligible_positions"
+    )
+
+    if not isinstance(
+        raw,
         (
-            "Playing Today",
-            "today",
+            list,
+            tuple,
         ),
-        (
-            "Playing Tomorrow",
-            "tomorrow",
-        ),
-        (
-            "Playing Day+2",
-            "day_plus_2",
-        ),
-    ),
-    start=1,
-):
-    count = sum(
-        1
-        for row in rows
+    ):
+        return "?"
+
+    positions = []
+
+    for value in raw:
+        position = str(
+            value
+        ).strip().upper()
+
         if (
-            row.get(
-                key,
-                {},
-            ).get(
-                "schedule_state"
+            position
+            in {
+                "C",
+                "LW",
+                "RW",
+                "D",
+                "G",
+                "W",
+            }
+            and position
+            not in positions
+        ):
+            positions.append(
+                position
             )
-            == "scheduled"
+
+    if not positions:
+        return "?"
+
+    return "/".join(
+        positions
+    )
+
+
+def _eligible_slots_label(
+    row: dict,
+) -> str:
+    raw = row.get(
+        "eligible_positions"
+    )
+
+    if not isinstance(
+        raw,
+        (
+            list,
+            tuple,
+        ),
+    ):
+        return "?"
+
+    positions = []
+
+    for value in raw:
+        cleaned = str(
+            value
+        ).strip()
+
+        if not cleaned:
+            continue
+
+        if cleaned.casefold() == "util":
+            cleaned = "UTIL"
+        else:
+            cleaned = cleaned.upper()
+
+        if cleaned not in positions:
+            positions.append(
+                cleaned
+            )
+
+    if not positions:
+        return "?"
+
+    return " ? ".join(
+        positions
+    )
+
+
+def _projection_row(
+    row: dict,
+    *,
+    include_percent: bool,
+) -> dict:
+    result = {
+        "Player": _player_name(
+            row
+        ),
+        "Pos.": _position_label(
+            row
+        ),
+        "Eligible Slots": (
+            _eligible_slots_label(
+                row
+            )
+        ),
+        "Team": _team(
+            row
+        ),
+        "Status": _status(
+            row
+        ),
+    }
+
+    if include_percent:
+        result[
+            "% Ros"
+        ] = _percent_rostered(
+            row
         )
+
+    result.update(
+        {
+            "Today Game": (
+                _today_game(
+                    row.get(
+                        "today",
+                        {},
+                    )
+                )
+            ),
+            "Today FP": (
+                _projection_cell(
+                    row,
+                    "today",
+                )
+            ),
+            "Tmr FP": (
+                _projection_cell(
+                    row,
+                    "tomorrow",
+                )
+            ),
+            "D+2 FP": (
+                _projection_cell(
+                    row,
+                    "day_plus_2",
+                )
+            ),
+            "3D Total": (
+                _three_day_cell(
+                    row
+                )
+            ),
+        }
     )
 
-    metrics[
-        index
-    ].metric(
-        label,
-        count,
-    )
+    return result
 
 
-market_buckets = {
-    _market_bucket(row)
-    for row in rows
+POSITION_ORDER = {
+    "C": 0,
+    "LW": 1,
+    "RW": 2,
+    "W": 3,
+    "D": 4,
+    "G": 5,
+    "?": 9,
 }
 
-market_options = [
-    "All"
-]
 
-for market_label in (
-    "My Roster",
-    "Free Agents",
-    "Waivers",
-    "Other Teams",
+def _roster_sort_key(
+    row: dict,
 ):
-    if market_label in market_buckets:
-        market_options.append(
-            market_label
-        )
-
-
-filters = st.columns(
-    (
-        2,
-        1,
-        1,
-        1,
-    )
-)
-
-
-with filters[0]:
-    search_text = st.text_input(
-        "Find player",
-        placeholder=(
-            "Search by player name"
-        ),
-    )
-
-
-with filters[1]:
-    player_type_filter = (
-        st.selectbox(
-            "Player type",
-            (
-                "All",
-                "Skaters",
-                "Goalies",
-            ),
-        )
-    )
-
-
-with filters[2]:
-    market_filter = st.selectbox(
-        "Market",
-        tuple(
-            market_options
-        ),
-    )
-
-
-with filters[3]:
-    sort_by = st.selectbox(
-        "Sort by",
-        (
-            "3-Day Rank",
-            "Today Rank",
-            "Tomorrow Rank",
-            "Day+2 Rank",
-        ),
-    )
-
-
-filtered = rows
-
-
-if search_text.strip():
-    needle = (
-        search_text
-        .strip()
-        .casefold()
-    )
-
-    filtered = [
-        row
-        for row in filtered
-        if needle
-        in _player_name(
-            row
-        ).casefold()
-    ]
-
-
-if (
-    player_type_filter
-    == "Skaters"
-):
-    filtered = [
-        row
-        for row in filtered
-        if _player_type(
+    position = (
+        _position_label(
             row
         )
-        != "G"
-    ]
+        .split(
+            "/",
+            1,
+        )[0]
+    )
 
-elif (
-    player_type_filter
-    == "Goalies"
-):
-    filtered = [
-        row
-        for row in filtered
-        if _player_type(
-            row
-        )
-        == "G"
-    ]
-
-
-if market_filter != "All":
-    filtered = [
-        row
-        for row in filtered
-        if (
-            _market_bucket(row)
-            == market_filter
-        )
-    ]
-
-
-filtered = sorted(
-    filtered,
-    key=lambda row: (
-        _sort_rank(
-            row,
-            sort_by,
+    return (
+        POSITION_ORDER.get(
+            position,
+            8,
         ),
         _player_name(
             row
         ).casefold(),
-        str(
+    )
+
+
+def _projection_sort_key(
+    row: dict,
+    choice: str,
+):
+    if choice == "Today FP":
+        value = (
+            _day_projection_value(
+                row,
+                "today",
+            )
+        )
+
+    elif choice == "Tmr FP":
+        value = (
+            _day_projection_value(
+                row,
+                "tomorrow",
+            )
+        )
+
+    elif choice == "D+2 FP":
+        value = (
+            _day_projection_value(
+                row,
+                "day_plus_2",
+            )
+        )
+
+    else:
+        value = _three_day_value(
+            row
+        )
+
+    return (
+        value is None,
+        -(
+            value
+            if value is not None
+            else 0.0
+        ),
+        _player_name(
+            row
+        ).casefold(),
+    )
+
+
+tab_roster, tab_free_agents = st.tabs(
+    [
+        "My Roster",
+        "Free Agents",
+    ]
+)
+
+
+with tab_roster:
+    managed_rows = [
+        row
+        for row in rows
+        if (
             row.get(
-                "provider_player_key",
-                "",
+                "is_on_managed_team"
             )
-        ),
-    ),
-)
+            is True
+        )
+    ]
+
+    managed_rows = sorted(
+        managed_rows,
+        key=_roster_sort_key,
+    )
+
+    st.caption(
+        "Pos. shows natural fantasy position(s). "
+        "Eligible Slots shows every Yahoo lineup slot "
+        "the player can occupy."
+    )
+
+    if not managed_rows:
+        st.warning(
+            "No managed-roster players are present "
+            "in the current snapshot."
+        )
+
+    else:
+        roster_table = [
+            _projection_row(
+                row,
+                include_percent=False,
+            )
+            for row in managed_rows
+        ]
+
+        st.table(
+            roster_table
+        )
 
 
-table_rows = [
-    {
-        "Player": (
-            _player_name(
-                row
+with tab_free_agents:
+    free_agents = [
+        row
+        for row in rows
+        if (
+            row.get(
+                "is_on_managed_team"
             )
-        ),
-        "Type": (
-            _player_type(
-                row
-            )
-        ),
-        "Team": (
-            _team(
-                row
-            )
-        ),
-        "Eligible Pos.": (
-            _eligible_positions(
-                row
-            )
-        ),
-        "Status": (
-            _status(
-                row
-            )
-        ),
-        "% Ros": (
-            _percent_rostered(
-                row
-            )
-        ),
-        "Today": (
-            _day_cell(
+            is not True
+            and str(
                 row.get(
-                    "today",
-                    {},
+                    "market_state",
+                    "",
                 )
-            )
-        ),
-        "Tmr": (
-            _day_cell(
-                row.get(
-                    "tomorrow",
-                    {},
-                )
-            )
-        ),
-        "D+2": (
-            _day_cell(
-                row.get(
-                    "day_plus_2",
-                    {},
-                )
-            )
-        ),
-        "Game": (
-            _today_game(
-                row.get(
-                    "today",
-                    {},
-                )
-            )
-        ),
-    }
-    for row in filtered
-]
+            ).strip().casefold()
+            == "free_agent"
+        )
+    ]
 
+    controls = st.columns(
+        (
+            2,
+            1,
+            1,
+            1,
+        )
+    )
 
-st.dataframe(
-    table_rows,
-    hide_index=True,
-    use_container_width=True,
-    column_order=(
-        "Player",
-        "Type",
-        "Team",
-        "Eligible Pos.",
-        "Status",
-        "% Ros",
-        "Today",
-        "Tmr",
-        "D+2",
-        "Game",
-    ),
-    column_config={
-        "Player": (
-            st.column_config.TextColumn(
-                "Player",
-                width="medium",
+    with controls[0]:
+        search_text = st.text_input(
+            "Find free agent",
+            placeholder="Search player name",
+            key="nfhl_fa_search",
+        )
+
+    with controls[1]:
+        position_filter = st.selectbox(
+            "Position",
+            (
+                "All",
+                "C",
+                "LW",
+                "RW",
+                "D",
+                "G",
+            ),
+            key="nfhl_fa_position",
+        )
+
+    with controls[2]:
+        sort_choice = st.selectbox(
+            "Sort by",
+            (
+                "3-Day Total",
+                "Today FP",
+                "Tmr FP",
+                "D+2 FP",
+            ),
+            key="nfhl_fa_projection_sort",
+        )
+
+    with controls[3]:
+        row_limit = st.selectbox(
+            "Show",
+            (
+                25,
+                50,
+                100,
+            ),
+            index=0,
+            key="nfhl_fa_row_limit",
+        )
+
+    if search_text.strip():
+        needle = (
+            search_text
+            .strip()
+            .casefold()
+        )
+
+        free_agents = [
+            row
+            for row in free_agents
+            if needle
+            in _player_name(
+                row
+            ).casefold()
+        ]
+
+    if position_filter != "All":
+        free_agents = [
+            row
+            for row in free_agents
+            if position_filter
+            in {
+                str(position)
+                .strip()
+                .upper()
+                for position
+                in (
+                    row.get(
+                        "eligible_positions"
+                    )
+                    or []
+                )
+            }
+        ]
+
+    free_agents = sorted(
+        free_agents,
+        key=lambda row: (
+            _projection_sort_key(
+                row,
+                sort_choice,
             )
         ),
-        "Type": (
-            st.column_config.TextColumn(
-                "Type",
-                width="small",
+    )
+
+    displayed_free_agents = (
+        free_agents[
+            :int(
+                row_limit
             )
-        ),
-        "Team": (
-            st.column_config.TextColumn(
-                "Team",
-                width="small",
+        ]
+    )
+
+    st.caption(
+        f"Showing {len(displayed_free_agents)} "
+        f"of {len(free_agents)} matching true free agents."
+    )
+
+    if not displayed_free_agents:
+        st.info(
+            "No free agents match the current filters."
+        )
+
+    else:
+        free_agent_table = [
+            _projection_row(
+                row,
+                include_percent=True,
             )
-        ),
-        "Today": (
-            st.column_config.TextColumn(
-                "Today",
-                width="small",
-            )
-        ),
-        "Tmr": (
-            st.column_config.TextColumn(
-                "Tmr",
-                width="small",
-            )
-        ),
-        "D+2": (
-            st.column_config.TextColumn(
-                "D+2",
-                width="small",
-            )
-        ),
-        "Game": (
-            st.column_config.TextColumn(
-                "Game",
-                width="medium",
-            )
-        ),
-    },
-)
+            for row
+            in displayed_free_agents
+        ]
+
+        st.table(
+            free_agent_table
+        )
 
 
 st.caption(
-    "Today / Tmr / D+2 = "
-    "rank (expected NFHL points). "
-    "Game = today's matchup and puck-drop time only. "
-    "Times are Eastern. "
-    "OFF = known off-day; "
-    "— = unresolved or missing."
+    "Today / Tmr / D+2 are projected fantasy points. "
+    "3D Total is the projected sum across those three days. "
+    "OFF = no NHL game; ? = projection unavailable or unresolved."
 )
