@@ -917,6 +917,7 @@ else:
 
         st.dataframe(
             lineup_table,
+            height=max(120, 35 * (len(lineup_table) + 1) + 8),
             hide_index=True,
             use_container_width=True,
             column_order=(
@@ -1072,6 +1073,7 @@ else:
 
         st.dataframe(
             market_table,
+            height=max(120, 35 * (len(market_table) + 1) + 8),
             hide_index=True,
             use_container_width=True,
             column_order=(
