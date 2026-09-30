@@ -52,6 +52,15 @@ from hockey_rmt.services.skater_projection import (
 )
 
 
+from hockey_rmt.domain.league import LeagueDefinition
+from hockey_rmt.domain.player_stats import (
+    GoalieSeasonStats,
+    SkaterSeasonStats,
+)
+from hockey_rmt.services.fantasy_value import (
+    score_historical_season,
+)
+
 class PreseasonStrengthAssemblyError(
     ValueError
 ):
@@ -968,5 +977,171 @@ def build_preseason_player_strengths(
         ),
         goalie_projections=(
             goalie_projections
+        ),
+    )
+
+
+def build_league_preseason_player_strengths(
+    *,
+    league: LeagueDefinition,
+    projection_season_id: int,
+    players: Sequence[
+        Player
+    ],
+    identity_resolutions: Sequence[
+        PlayerIdentityResolution
+    ],
+    historical_skater_stats_by_season: Mapping[
+        int,
+        Sequence[
+            SkaterSeasonStats
+        ],
+    ],
+    historical_goalie_stats_by_season: Mapping[
+        int,
+        Sequence[
+            GoalieSeasonStats
+        ],
+    ],
+    skater_bios_by_season: Mapping[
+        int,
+        Sequence[
+            SkaterBio
+        ],
+    ],
+    profiles_by_nhl_id: Mapping[
+        int,
+        NhlPlayerProfile,
+    ],
+    current_nhl_goalies: Sequence[
+        CurrentNhlGoalie
+    ],
+    external_goalie_workload: Sequence[
+        GoalieWorkloadProjection
+    ] | None = None,
+    fallback_goalie_starts_by_nhl_id: (
+        Mapping[int, float]
+        | None
+    ) = None,
+    rookie_training_season_ids: (
+        Sequence[int]
+        | None
+    ) = None,
+) -> tuple[
+    PlayerStrengthProjection,
+    ...,
+]:
+    """
+    Score shared historical NHL statistics
+    under one league's scoring rules, then
+    pass those league-specific historical
+    values through the existing preseason
+    projection model.
+    """
+
+    skater_seasons = {
+        int(season_id)
+        for season_id
+        in historical_skater_stats_by_season
+    }
+
+    goalie_seasons = {
+        int(season_id)
+        for season_id
+        in historical_goalie_stats_by_season
+    }
+
+    if skater_seasons != goalie_seasons:
+        raise PreseasonStrengthAssemblyError(
+            "Historical raw-stat season coverage "
+            "did not match between skaters and "
+            "goalies. "
+            "missing_goalie="
+            f"{sorted(skater_seasons - goalie_seasons)}; "
+            "missing_skater="
+            f"{sorted(goalie_seasons - skater_seasons)}."
+        )
+
+    historical_values_by_season = {}
+
+    for season_id in sorted(
+        skater_seasons
+    ):
+        skaters = tuple(
+            historical_skater_stats_by_season[
+                season_id
+            ]
+        )
+
+        goalies = tuple(
+            historical_goalie_stats_by_season[
+                season_id
+            ]
+        )
+
+        invalid_skater_seasons = {
+            int(row.season_id)
+            for row in skaters
+            if int(row.season_id)
+            != season_id
+        }
+
+        invalid_goalie_seasons = {
+            int(row.season_id)
+            for row in goalies
+            if int(row.season_id)
+            != season_id
+        }
+
+        if (
+            invalid_skater_seasons
+            or invalid_goalie_seasons
+        ):
+            raise PreseasonStrengthAssemblyError(
+                "Historical raw-stat row season "
+                "did not match its mapping key "
+                f"{season_id}. "
+                "skater_row_seasons="
+                f"{sorted(invalid_skater_seasons)}; "
+                "goalie_row_seasons="
+                f"{sorted(invalid_goalie_seasons)}."
+            )
+
+        historical_values_by_season[
+            season_id
+        ] = score_historical_season(
+            skaters=skaters,
+            goalies=goalies,
+            league=league,
+        )
+
+    return build_preseason_player_strengths(
+        projection_season_id=(
+            projection_season_id
+        ),
+        players=players,
+        identity_resolutions=(
+            identity_resolutions
+        ),
+        historical_values_by_season=(
+            historical_values_by_season
+        ),
+        skater_bios_by_season=(
+            skater_bios_by_season
+        ),
+        profiles_by_nhl_id=(
+            profiles_by_nhl_id
+        ),
+        current_nhl_goalies=(
+            current_nhl_goalies
+        ),
+        external_goalie_workload=(
+            external_goalie_workload
+        ),
+        fallback_goalie_starts_by_nhl_id=(
+            fallback_goalie_starts_by_nhl_id
+        ),
+        rookie_training_season_ids=(
+            rookie_training_season_ids
         ),
     )
