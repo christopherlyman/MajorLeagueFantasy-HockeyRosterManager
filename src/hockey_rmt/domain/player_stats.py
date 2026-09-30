@@ -34,6 +34,9 @@ class GoalieSeasonStats:
     saves: int
     shutouts: int
 
+    losses: int | None = None
+    overtime_losses: int | None = None
+
 
 @dataclass(frozen=True)
 class FantasyPointComponent:

@@ -28,12 +28,30 @@ SKATER_CATEGORIES = (
     "BLK",
 )
 
-GOALIE_CATEGORIES = (
+REQUIRED_GOALIE_CATEGORIES = (
     "W",
     "GA",
     "SV",
     "SHO",
 )
+
+OPTIONAL_GOALIE_CATEGORIES = (
+    "L",
+    "OTL",
+)
+
+GOALIE_CATEGORIES = (
+    "W",
+    "L",
+    "OTL",
+    "GA",
+    "SV",
+    "SHO",
+)
+
+SCORING_ABBREVIATION_ALIASES = {
+    "SO": "SHO",
+}
 
 
 def scoring_weights(
@@ -42,12 +60,19 @@ def scoring_weights(
     result: dict[str, float] = {}
 
     for rule in league.scoring_rules:
-        abbreviation = (
+        raw_abbreviation = (
             rule.abbreviation
         )
 
-        if not abbreviation:
+        if not raw_abbreviation:
             continue
+
+        abbreviation = (
+            SCORING_ABBREVIATION_ALIASES.get(
+                raw_abbreviation,
+                raw_abbreviation,
+            )
+        )
 
         if abbreviation in result:
             raise FantasyValueError(
@@ -64,7 +89,7 @@ def scoring_weights(
 
     required = (
         SKATER_CATEGORIES
-        + GOALIE_CATEGORIES
+        + REQUIRED_GOALIE_CATEGORIES
     )
 
     missing = [
@@ -78,6 +103,12 @@ def scoring_weights(
             "League scoring definition is "
             "missing required categories: "
             + ", ".join(missing)
+        )
+
+    for category in OPTIONAL_GOALIE_CATEGORIES:
+        result.setdefault(
+            category,
+            0.0,
         )
 
     return result
@@ -198,6 +229,26 @@ def score_skater(
     )
 
 
+def _goalie_stat_value(
+    value: int | None,
+    *,
+    category: str,
+    points_per_unit: float,
+) -> float:
+    if value is not None:
+        return float(value)
+
+    if float(points_per_unit) != 0.0:
+        raise FantasyValueError(
+            "Goalie stat evidence for "
+            f"{category!r} is unavailable, "
+            "but the league assigns that "
+            "category a non-zero score."
+        )
+
+    return 0.0
+
+
 def score_goalie(
     stats: GoalieSeasonStats,
     league: LeagueDefinition,
@@ -208,6 +259,16 @@ def score_goalie(
 
     values = {
         "W": stats.wins,
+        "L": _goalie_stat_value(
+            stats.losses,
+            category="L",
+            points_per_unit=weights["L"],
+        ),
+        "OTL": _goalie_stat_value(
+            stats.overtime_losses,
+            category="OTL",
+            points_per_unit=weights["OTL"],
+        ),
         "GA": stats.goals_against,
         "SV": stats.saves,
         "SHO": stats.shutouts,

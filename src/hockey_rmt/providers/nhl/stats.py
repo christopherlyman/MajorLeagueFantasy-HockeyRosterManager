@@ -46,6 +46,8 @@ GOALIE_SUMMARY_FIELDS = (
     "goalieFullName",
     "gamesPlayed",
     "wins",
+    "losses",
+    "otLosses",
     "goalsAgainst",
     "saves",
     "shutouts",
@@ -518,6 +520,14 @@ def fetch_goalie_season_stats(
             shutouts=_required_int(
                 row,
                 "shutouts",
+            ),
+            losses=_required_int(
+                row,
+                "losses",
+            ),
+            overtime_losses=_required_int(
+                row,
+                "otLosses",
             ),
         )
         for row in rows
