@@ -137,3 +137,164 @@ def build_yahoo_nhl_crosswalk(
         )
 
     return tuple(result)
+
+
+def build_provider_nhl_crosswalk(
+    players: Sequence[Player],
+    nhl_teams: Sequence[HockeyTeam],
+) -> tuple[TeamIdentityCrosswalk, ...]:
+    """
+    Build a team-identity crosswalk for one
+    fantasy provider's player universe.
+    """
+
+    source_teams: dict[
+        str,
+        tuple[
+            str,
+            str,
+            str,
+            str,
+        ],
+    ] = {}
+
+    providers = set()
+
+    for player in players:
+        if (
+            not player.nhl_team_key
+            or not player.nhl_team_name
+            or not player.nhl_team_abbr
+        ):
+            continue
+
+        provider = str(
+            player.provider
+        ).strip().lower()
+
+        if not provider:
+            raise TeamIdentityError(
+                "Player provider was empty."
+            )
+
+        providers.add(
+            provider
+        )
+
+        row = (
+            provider,
+            player.nhl_team_key,
+            player.nhl_team_name,
+            player.nhl_team_abbr,
+        )
+
+        existing = source_teams.get(
+            player.nhl_team_key
+        )
+
+        if (
+            existing is not None
+            and existing != row
+        ):
+            raise TeamIdentityError(
+                "Conflicting provider team identity "
+                f"for {player.nhl_team_key!r}."
+            )
+
+        source_teams[
+            player.nhl_team_key
+        ] = row
+
+    if len(providers) > 1:
+        raise TeamIdentityError(
+            "Player universe contained multiple "
+            f"providers: {sorted(providers)}."
+        )
+
+    if not source_teams:
+        return ()
+
+    source_provider = next(
+        iter(providers)
+    )
+
+    nhl_by_name = {}
+    nhl_by_abbr = {}
+
+    for team in nhl_teams:
+        normalized_name = normalize_team_name(
+            team.name
+        )
+
+        abbreviation = str(
+            team.abbreviation
+        ).strip().upper()
+
+        if normalized_name in nhl_by_name:
+            raise TeamIdentityError(
+                "Normalized NHL team name "
+                f"{normalized_name!r} was not unique."
+            )
+
+        if abbreviation in nhl_by_abbr:
+            raise TeamIdentityError(
+                "NHL team abbreviation "
+                f"{abbreviation!r} was not unique."
+            )
+
+        nhl_by_name[
+            normalized_name
+        ] = team
+
+        nhl_by_abbr[
+            abbreviation
+        ] = team
+
+    result = []
+
+    for (
+        provider,
+        source_key,
+        source_name,
+        source_abbr,
+    ) in sorted(
+        source_teams.values(),
+        key=lambda row: row[2],
+    ):
+        nhl_team = nhl_by_abbr.get(
+            str(
+                source_abbr
+            ).strip().upper()
+        )
+
+        if nhl_team is None:
+            nhl_team = nhl_by_name.get(
+                normalize_team_name(
+                    source_name
+                )
+            )
+
+        if nhl_team is None:
+            raise TeamIdentityError(
+                "No NHL team matched provider "
+                f"{provider!r} team "
+                f"{source_name!r} "
+                f"({source_abbr!r}, "
+                f"{source_key!r})."
+            )
+
+        result.append(
+            TeamIdentityCrosswalk(
+                source_provider=provider,
+                source_team_key=source_key,
+                source_team_abbr=source_abbr,
+                canonical_team_name=(
+                    nhl_team.name
+                ),
+                canonical_team_abbr=(
+                    nhl_team.abbreviation
+                ),
+            )
+        )
+
+    return tuple(result)

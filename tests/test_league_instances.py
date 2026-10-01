@@ -59,15 +59,42 @@ class LeagueInstanceTests(unittest.TestCase):
             (
                 "nfhl_redraft",
                 "oth_redraft",
+                "oth_keeper",
             ),
         )
 
-    def test_unknown_key_fails(self):
-        with self.assertRaisesRegex(
-            ValueError,
-            "Unknown logical league key",
-        ):
-            get_league_instance("oth_keeper")
+    def test_oth_keeper_binding(self):
+        instance = get_league_instance(
+            "oth_keeper"
+        )
+
+        self.assertEqual(
+            instance.logical_key,
+            "oth_keeper",
+        )
+        self.assertEqual(
+            instance.display_name,
+            "OTH Keeper",
+        )
+        self.assertEqual(
+            instance.provider,
+            "fleaflicker",
+        )
+        self.assertEqual(
+            instance.provider_league_key,
+            "9899",
+        )
+        self.assertEqual(
+            instance.managed_team_key,
+            "55165",
+        )
+        self.assertEqual(
+            instance.season_year,
+            2026,
+        )
+        self.assertIsNotNone(
+            instance.operational
+        )
 
     def test_blank_key_fails(self):
         with self.assertRaisesRegex(
@@ -75,6 +102,14 @@ class LeagueInstanceTests(unittest.TestCase):
             "must not be empty",
         ):
             get_league_instance(" ")
+    def test_unknown_logical_key_still_fails(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "Unknown logical league key",
+        ):
+            get_league_instance(
+                "missing_league"
+            )
 
 
 if __name__ == "__main__":

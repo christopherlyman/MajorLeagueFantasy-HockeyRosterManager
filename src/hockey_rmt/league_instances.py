@@ -71,6 +71,28 @@ _LEAGUE_INSTANCES = {
             playoff_start_week=24,
         ),
     ),
+    "oth_keeper": LeagueInstanceConfig(
+        logical_key="oth_keeper",
+        display_name="OTH Keeper",
+        provider="fleaflicker",
+        season_year=2026,
+        provider_league_key="9899",
+        managed_team_key="55165",
+        operational=LeagueOperationalConfig(
+            scoring_format='head_to_head_points',
+            roster_period='daily',
+            lineup_deadline='game_start',
+            start_date=date(2026, 9, 29),
+            end_date=date(2027, 4, 10),
+            max_weekly_adds=7,
+            waiver_type='rolling_priority',
+            waiver_rule='all_players_after_game_start',
+            waiver_days=1,
+            uses_faab=False,
+            playoff_teams=6,
+            playoff_start_week=24,
+        ),
+    ),
 }
 
 
